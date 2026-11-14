@@ -14,6 +14,7 @@ export class InputCoordinator {
   private generation = 0;
   private connection: Connection | null = null;
   private flight: Promise<Connection> | null = null;
+  private closing: Promise<void> = Promise.resolve();
   private port: DataPort | null = null;
   private held = false;
   private view: View;
@@ -48,10 +49,18 @@ export class InputCoordinator {
     const connection = this.connection, flight = this.flight;
     this.connection = null;
     connection?.stop('View retired');
-    if (connection) await connection.closed;
-    if (flight) {
-      try { const pending = await flight; pending.stop('View retired'); await pending.closed; } catch { /* failed open already cleaned */ }
-    }
+    // Retiring a handle does not mean its driver cleanup has completed. Every
+    // subsequent view must share this barrier, including updates while no handle
+    // is published (e.g. Review presentation enabling Speak during port.close).
+    const previous = this.closing;
+    this.closing = (async () => {
+      await previous;
+      if (connection) await connection.closed;
+      if (flight) {
+        try { const pending = await flight; pending.stop('View retired'); await pending.closed; } catch { /* failed open already cleaned */ }
+      }
+    })();
+    await this.closing;
   }
   stop(reason: string, notify = true) {
     this.generation++; this.mode = 'none'; this.busy = false; this.held = false;

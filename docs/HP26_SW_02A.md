@@ -2,6 +2,8 @@
 
 Status: **PARTIAL**, November 14, 2026. The master implementation directive authorizes SW-02A and the subsequent ordered milestones. This supersedes the historical SW-00/SW-01 stop gates, while preserving the accepted hardware and input boundaries.
 
+Latest physical browser observation: four hardware selections traversed Compose → category → phrase → Review and retained `Please reposition me.`. Entering Review stopped with **Serial setup failed**, before speech. This run does not pass the communication acceptance gate. A deterministic regression reproduced two rapid view updates reopening the port while the previous close was still pending. A shared cleanup promise now serializes retirement; the regression passes. The accepted input/firmware files are unchanged. Repeat physical navigation and actual audible speech remain necessary.
+
 Implemented: phrase categories; grouped alphabet, numbers and punctuation; character editing; occurrence-specific correction; staged deletion; Undo; intentional clear; Pause/Resume; exact full-message paging; separate frozen speech authorization; browser voice discovery, selection, rate, fixed-sample preview and stationary Stop. Drafts and approvals exist only in tab memory. Branding follows [the owner update](BRANDING.md).
 
 The accepted four input modules and firmware sources remain unchanged. `communication/input-coordinator.mts` owns application navigation: it retires the previous view, awaits serial cleanup, and reopens the same independently verified port with a new unpredictable epoch and fresh state snapshot. It never uses port order, relabels buffered input, fabricates a physical release, or reconnects automatically after a genuine interruption. This adds a synchronization delay to each screen transition. Its usability and physical reliability need testing in this workspace, separately from the accepted diagnostic.
@@ -12,7 +14,7 @@ Review pages preserve the exact concatenated message. Pages are measured against
 
 ## Executed verification
 
-- All 46 Node tests passed, including the existing 35 input/protocol/freshness/adapter tests, nine new communication/navigation tests and two measured-pagination tests.
+- All 48 communication/input tests passed after the close-race and layout-recovery regressions. An additional 17 isolated provider/API/official-SDK tests passed (65 total); all external provider responses in those tests are synthetic. The loopback HTTP test required the execution permission for local port binding.
 - TypeScript checking and the production build passed after the viewport/pagination refinements.
 - Chrome companion controls: phrase selection → Review preserved `Please reposition me.`; status stayed Not spoken/Awaiting approval until a separate Speak action. The browser then reported Speaking and Playback finished. Actual audibility has **not** been confirmed by the owner.
 - Chrome initially exposed a visualViewport scrollbar feedback pause; the guard now compares actual window dimensions and zoom scale. Subsequent phrase/review navigation passed.

@@ -37,3 +37,23 @@ test('simulation release after a replaced view only rearms; it does not select t
   assert.equal(c.state.phase, 'armed'); assert.deepEqual(selected, []);
   c.down(); c.up(); assert.deepEqual(selected, ['new']);
 });
+test('rapid review presentation waits for an in-progress close before opening the newest view', async () => {
+  const port = new EventTarget() as DataPort; let serial = 0, opens = 0, active = 0;
+  let finishClose!: () => void;
+  const c = new InputCoordinator({ id: 'compose', revision: 1, targets: ['review'] }, {
+    changed: () => {}, selected: () => {}, interrupted: () => {},
+  }, async (chooser, verify, cb) => {
+    const selected = await chooser.requestPort({ filters: [] }); assert.equal(await verify(selected), true);
+    opens++; active++; assert.equal(active, 1, 'no second port.open before the previous close resolves');
+    cb.epoch(`session-${++serial}`);
+    let stopped = false;
+    const closed = new Promise<void>(resolve => { finishClose = () => { active--; resolve(); }; });
+    return { closed, stop: () => { if (!stopped) { stopped = true; cb.cancelled('retired'); } } };
+  }, () => true, () => `idle-${++serial}`);
+  await c.connect({ requestPort: async () => port }, async () => true);
+  c.setView({ id: 'review', revision: 2, targets: ['back'] });
+  c.setView({ id: 'review', revision: 3, targets: ['speak', 'back'] });
+  await flush(); assert.equal(opens, 1, 'presentation update must await the outstanding close');
+  finishClose(); await flush(); assert.equal(opens, 2); assert.equal(c.state.view?.revision, 3);
+  c.stop('test done', false); finishClose(); await flush();
+});

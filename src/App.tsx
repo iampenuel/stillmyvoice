@@ -67,7 +67,9 @@ export function App() {
       synth.addEventListener('voiceschanged', voicesChanged); voicesChanged();
     }
     const blur = () => {
-      if (controller.mode !== 'none' || current.current.authorization) controller.stop('Focus lost — reconnect or resume explicitly');
+      // The native permission picker can temporarily blur before port opening.
+      // The accepted adapter guards opening and every post-open focus loss.
+      if (controller.state.connected || controller.mode === 'simulation' || current.current.authorization) controller.stop('Focus lost — reconnect or resume explicitly');
     };
     const visibility = () => { if (document.visibilityState !== 'visible') controller.stop('Page hidden — input and speech stopped'); };
     let dimensions = `${window.innerWidth}:${window.innerHeight}:${window.visualViewport?.scale ?? 1}`;
@@ -188,7 +190,15 @@ export function App() {
   const displayed = (model.screen.name === 'review' || model.screen.name === 'reader') && model.review
     ? model.review.pages[model.screen.page ?? 0] : model.draft;
   const list = choices(model);
-  return <main style={{ '--text-scale': model.settings.size / 100 } as CSSProperties}>
+  return <main style={{ '--text-scale': model.settings.size / 100 } as CSSProperties}
+    onPointerDownCapture={event => {
+      if (event.target !== simButton.current && coordinator.current?.mode !== 'none') {
+        coordinator.current?.stop('Companion pointer — physical scanning paused', false);
+      }
+    }}
+    onKeyDownCapture={event => {
+      if (event.key === 'Tab' && coordinator.current?.mode !== 'none') coordinator.current?.stop('Keyboard navigation — scan paused');
+    }}>
     <header className="masthead"><div className="wordmark" aria-label="SMV — Still My Voice">SMV</div>
       <div><p className="product-name">Still My Voice</p><p className="tagline">Communication, on your terms.</p></div>
       <span className="prototype">Non-clinical prototype</span></header>

@@ -81,3 +81,11 @@ test('speech consumes authorization once, rejects invalid work, and ignores late
   callback!('start'); controller.cancel(); callback!('end');
   assert.deepEqual(requests, ['I am not in pain.']); assert.deepEqual(events, ['start']);
 });
+test('layout interruption resets review presentation and recovery creates readable pages again', () => {
+  let s = reviewed('Fictional wording. '.repeat(30));
+  assert.equal(s.review!.seen.length, s.review!.pages.length);
+  s = interrupt(s, 'Layout changed — input and speech stopped');
+  assert.equal(s.review, null); s = step(s, 'resume');
+  assert.equal(s.screen.name, 'review'); assert.deepEqual(s.review!.seen, []);
+  assert.equal(s.review!.pages.join(''), s.draft); assert.equal(choose(s, 'speak', s.uiRevision), s);
+});

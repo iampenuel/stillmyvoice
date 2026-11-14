@@ -72,7 +72,7 @@ export function choices(s: Model): Choice[] {
     }
     case 'review': {
       const complete = s.review?.revision === s.revision && s.review.seen.length === s.review.pages.length;
-      return [c('next', 'Next part', !s.review || page + 1 >= s.review.pages.length), c('previous', 'Previous part', page === 0),
+      return [...(s.review && s.review.pages.length > 1 ? [c('next', 'Next part', page + 1 >= s.review.pages.length), c('previous', 'Previous part', page === 0)] : []),
         c('speak', s.lastPlayed === s.draft ? 'Speak again' : 'Speak exactly this', !complete || !s.settings.voice,
           !complete ? 'Read every part before speaking.' : !s.settings.voice ? 'Choose an available voice in Settings.' : 'A separate selection authorizes the full message.'),
         c('edit', 'Make changes'), back(), more()];
@@ -101,8 +101,14 @@ export function title(s: Model): string {
     paused: 'Scanning paused', speaking: s.authorization?.preview ? 'Voice preview' : 'Your approved message', complete: 'Message playback ended', 'speech-error': 'Speech stopped' };
   return names[s.screen.name];
 }
-function go(s: Model, screen: Screen) { s.stack.push(s.screen); s.screen = screen; }
-function pop(s: Model) { s.screen = s.stack.pop() ?? { name: 'compose' }; }
+function go(s: Model, screen: Screen) { s.stack = [...s.stack.slice(-31), s.screen]; s.screen = screen; }
+function pop(s: Model) {
+  s.screen = s.stack.pop() ?? { name: 'compose' };
+  if ((s.screen.name === 'review' || s.screen.name === 'reader') && (!s.review || s.review.revision !== s.revision)) {
+    s.screen.page = 0;
+    s.review = { revision: s.revision, pages: paginate(s.draft, Math.max(36, Math.floor(18000 / s.settings.size))), seen: [] };
+  }
+}
 function home(s: Model) { s.screen = { name: 'compose' }; s.stack = []; s.repair = null; s.focusId = s.draft ? 'review' : 'phrases'; }
 function editDraft(s: Model, text: string) {
   if (text === s.draft) return;
@@ -216,6 +222,7 @@ export function speechEvent(before: Model, id: string, event: 'start' | 'end' | 
 /** An interruption is never navigation, a release, a resume or speech approval. */
 export function interrupt(before: Model, reason: string): Model {
   const s = structuredClone(before); s.uiRevision++; s.notice = reason;
+  if (reason.startsWith('Layout changed')) s.review = null;
   if (s.authorization) { s.authorization = null; s.speech = 'Stopped'; pop(s); }
   if (s.screen.name !== 'paused') go(s, { name: 'paused' });
   return s;
