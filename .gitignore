@@ -1,0 +1,25 @@
+# Third-party instruction bundles stay local; publish the registry instead.
+/.agents/skills/
+
+# Device snapshots, settings, credentials, and personal evidence stay outside Git.
+/private/
+/backups/
+/evidence/
+/local-reports/
+settings.toml
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local system files and outputs from future, separately authorized work.
+.DS_Store
+._*
+node_modules/
+dist/
+coverage/
+output/
+test-results/
+playwright-report/
+*.log
