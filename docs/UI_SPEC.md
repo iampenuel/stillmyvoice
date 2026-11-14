@@ -2,6 +2,8 @@
 
 This is a coordination contract, not a rendered design, approved token sheet, or implemented interface. UI/UX owns visual specifications, layout, copy, and review; admin owns scope. Engineering preserves the [input/approval contract](INTERFACE_CONTRACT.md).
 
+November 14, 2026 checkpoint: [UI specification v2](UI_SPEC_V2_PROPOSAL.md) records the user-approved adaptive message-left/interaction-right implementation direction, contextual correction with unrestricted spelling, visible scan focus, distinct held/selected states, and separate final speech approval. Its exact dimensions, timings, interaction estimates, and rendered treatments remain provisional. This updates the architectural approval status below without claiming browser, physical-switch, or usability validation.
+
 ## Locked direction
 
 StillMyVoice is an original adult communication workspace. Borrow principles: OpenAI's direct task access and restrained chrome; Apple's hierarchy, continuity, agency, feedback, and recovery; Uber's labeled controls, legibility, spacing consistency, and operational clarity. Do not copy logos, proprietary font files, brand assets, or complete layouts. A system font is acceptable.
