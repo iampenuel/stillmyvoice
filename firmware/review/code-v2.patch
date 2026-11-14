@@ -1,0 +1,110 @@
+diff --git a/firmware/proposed/code.py b/firmware/review/code-v2.py
+index 25646fd..7d52113 100644
+--- a/firmware/proposed/code.py
++++ b/firmware/review/code-v2.py
+@@ -1,4 +1,4 @@
+-"""PROPOSED HP26-SW-01 CDC input; NOT installed or physically validated.
++"""UNAPPROVED HP26-SW-01 protocol v2 candidate; NOT installed.
+ 
+ Original RP2040 Pico H / CircuitPython 10.3.2. GP1 to GND, internal pull-up.
+ GP25 onboard LED only. No arcade lamp, HID events, speech, reset or disk writes.
+@@ -10,7 +10,8 @@ import json
+ class SwitchSession:
+     """Track observed debounced state and bind edges to a fresh host challenge."""
+ 
+-    def __init__(self, pressed):
++    def __init__(self, pressed, clock=lambda: 0):
++        self.clock = clock
+         self.pressed = pressed
+         self.cancel()
+ 
+@@ -21,8 +22,8 @@ class SwitchSession:
+         self.pending = None
+ 
+     def message(self, kind, **fields):
+-        return dict(v=1, type=kind, epoch=self.epoch,
+-                    sequence=self.sequence, **fields)
++        return dict(v=2, type=kind, epoch=self.epoch,
++                    sequence=self.sequence, tick_ms=self.clock(), **fields)
+ 
+     def synchronize(self, epoch):
+         if (not isinstance(epoch, str) or not 1 <= len(epoch) <= 128
+@@ -34,7 +35,7 @@ class SwitchSession:
+         self.armed = not self.pressed
+         return self.message('sync', pressed=self.pressed)
+ 
+-    def transition(self, pressed):
++    def transition(self, pressed, event_tick_ms=None):
+         if pressed == self.pressed:
+             return None
+         self.pressed = pressed
+@@ -49,11 +50,17 @@ class SwitchSession:
+         self.sequence += 1
+         if pressed:
+             self.pending = self.sequence
+-            return self.message('down')
++            message = self.message('down')
++            if event_tick_ms is not None:
++                message['tick_ms'] = event_tick_ms
++            return message
+         if self.pending is not None:
+             down_sequence = self.pending
+             self.pending = None
+-            return self.message('up', downSequence=down_sequence)
++            message = self.message('up', downSequence=down_sequence)
++            if event_tick_ms is not None:
++                message['tick_ms'] = event_tick_ms
++            return message
+         # An unmatched observed release must not manufacture a completed cycle.
+         self.cancel()
+         return None
+@@ -65,6 +72,7 @@ def main():
+     import digitalio
+     import keypad
+     import usb_cdc
++    import supervisor
+ 
+     data = usb_cdc.data
+     if data is None:
+@@ -106,7 +114,7 @@ def main():
+                            interval=0.01, debounce_threshold=3, max_events=32)
+         keys.events.clear()
+         keys.reset()
+-        session = SwitchSession(False)
++        session = SwitchSession(False, supervisor.ticks_ms)
+         line = bytearray()
+         was_connected = False
+ 
+@@ -126,7 +134,7 @@ def main():
+                 event = keys.events.get()
+                 if event is None:
+                     break
+-                message = session.transition(event.pressed)
++                message = session.transition(event.pressed, event.timestamp)
+                 led.value = session.pressed
+                 if connected:
+                     transmit(message)
+@@ -140,11 +148,19 @@ def main():
+                         command = json.loads(line.decode('utf-8'))
+                         line = bytearray()
+                         if (not isinstance(command, dict) or type(command.get('v')) is not int
+-                                or command.get('v') != 1
+-                                or command.get('type') != 'sync'
+-                                or set(command) != {'v', 'type', 'epoch'}):
++                                or command.get('v') != 2):
++                            raise ValueError('Unexpected CDC command')
++                        if command.get('type') == 'sync' and set(command) == {'v', 'type', 'epoch'}:
++                            transmit(session.synchronize(command.get('epoch')))
++                        elif (command.get('type') == 'ping'
++                              and set(command) == {'v', 'type', 'epoch', 'nonce'}
++                              and command.get('epoch') == session.epoch
++                              and isinstance(command.get('nonce'), str)
++                              and 1 <= len(command['nonce']) <= 64
++                              and all(c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-' for c in command['nonce'])):
++                            transmit(session.message('pong', nonce=command['nonce']))
++                        else:
+                             raise ValueError('Unexpected CDC command')
+-                        transmit(session.synchronize(command.get('epoch')))
+                     else:
+                         line.append(byte)
+                         if len(line) > 256:

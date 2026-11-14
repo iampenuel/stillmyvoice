@@ -4,7 +4,7 @@
 
 - Product: StillMyVoice; slug: `stillmyvoice`. One application repository and one coordinated implementation stream.
 - The latest explicit user request governs scope. Admin owns product scope and integration; UI/UX owns visual specifications, layout, copy, and design review; engineering owns input, transport, domain, AI, and speech boundaries.
-- Current checkpoint: HP26-SW-01 software preparation is authorized and implemented as recorded in `docs/HP26_SW_01.md`; physical transport remains gated on separate explicit approval of the proposed Pico changes. Do not treat simulation or desktop firmware tests as physical evidence. Stop before CIRCUITPY writes, serial control, or user-operated physical tests until the relevant authorization/participation is present.
+- Current checkpoint: the exact approved HP26-SW-01 boot.py and code.py are installed and verified after user reconnection. See `docs/FIRMWARE_V2_REVIEW.md` for a newly identified freshness requirement and an uninstalled v2 candidate requiring separate approval. The data port has not been opened; physical acceptance remains pending. Do not change the reviewed source hashes or install another revision without approval. Do not treat desktop tests as physical evidence.
 - Read [project state](docs/PROJECT_STATE.md), then only the contract/specification relevant to the next authorized task. Chats are not live-synchronized; transfer real files, commit IDs, and concise reports.
 
 ## Preserve the hardware and user authorship
