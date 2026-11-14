@@ -99,13 +99,13 @@ test('phrase, playback, negation edit and review each require their own fresh ex
     callbacks.input({ v: 2, type: 'up', epoch, sequence: ++sequence, downSequence, tick_ms: 3 });
     await flush();
   };
-  await select('phrases'); await select('category:Comfort'); await select('phrase:0');
+  await select('phrases'); await select('phrase:2');
   await select('review'); assert.equal(model.authorization, null);
   assert.equal(c.state.view?.targets.includes('speak'), false);
   model = presented(model, model.revision, 0); c.setView(inputView(model)); await flush();
   assert.ok(c.state.view?.targets.includes('speak')); assert.equal(model.authorization, null);
   await select('speak'); assert.equal((model as ReturnType<typeof initialModel>).authorization?.text, 'Please reposition me.');
-  assert.equal(actions, 5); assert.deepEqual(c.state.view?.targets, ['stop']);
+  assert.equal(actions, 4); assert.deepEqual(c.state.view?.targets, ['stop']);
   const first = (model as ReturnType<typeof initialModel>).authorization!;
   model = speechEvent(model, first.id, 'end'); c.setView(inputView(model)); await flush();
   await select('edit'); await select('word:1');
@@ -114,7 +114,7 @@ test('phrase, playback, negation edit and review each require their own fresh ex
     await select(`row:${row}`); await select(`char:${letter}`);
     assert.equal(model.authorization, null);
   }
-  await select('row:navigation'); await select('done');
+  await select('done');
   assert.equal(model.draft, 'Please do not reposition me.');
   await select('review'); assert.equal(model.authorization, null);
   model = presented(model, model.revision, 0); c.setView(inputView(model)); await flush();

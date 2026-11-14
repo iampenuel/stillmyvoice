@@ -28,6 +28,8 @@ export const phrases: Record<string, readonly string[]> = {
   Clarification: ['Please repeat that.', 'That is not what I meant.', 'Please ask one question at a time.'],
   Conversation: ['Hello.', 'Thank you.', 'I have something to say.', 'Please wait while I write.'],
 };
+export const quickPhrases = ['Please stop.', 'I need help.', 'Please reposition me.', 'I am not ready.', 'Please repeat that.', 'That is not what I meant.'] as const;
+const phraseList = (category: string) => category === 'Quick phrases' ? quickPhrases : phrases[category];
 const c = (id: string, label: string, disabled = false, detail?: string): Choice => ({ id, label, disabled, detail });
 const back = () => c('back', 'Back');
 const more = () => c('more', 'More controls');
@@ -39,9 +41,15 @@ export function initialModel(session: string): Model {
 }
 /** The exact enabled targets rendered by the UI, with its requested starting target. */
 export function inputView(model: Model) {
-  const targets = choices(model).filter(x => !x.disabled).map(x => x.id);
+  const sections = choiceSections(model);
+  const targets = [...sections.primary, ...sections.navigation].filter(x => !x.disabled).map(x => x.id);
   const start = model.focusId ? Math.max(0, targets.indexOf(model.focusId)) : 0;
   return { id: model.screen.name, revision: model.uiRevision, targets: [...targets.slice(start), ...targets.slice(0, start)] };
+}
+const navigationIds = new Set(['back', 'more', 'review', 'done', 'resume', 'stop', 'pause', 'all-categories', 'row:navigation', 'row:rows', 'char: ', 'erase']);
+export function choiceSections(model: Model) {
+  const list = choices(model);
+  return { primary: list.filter(x => !navigationIds.has(x.id)), navigation: list.filter(x => navigationIds.has(x.id)) };
 }
 export function words(text: string) {
   return [...text.matchAll(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)]
@@ -54,24 +62,28 @@ export function choices(s: Model): Choice[] {
       c('assist', 'Get suggestions', true, 'Cloud assistance is not configured.'),
       c('review', 'Review message', !s.draft.trim()), more()];
     case 'categories': return [...Object.keys(phrases).map(x => c(`category:${x}`, x)), back(), more()];
-    case 'phrases': return [...phrases[screen.value!]!.map((x, i) => c(`phrase:${i}`, x)), back(), more()];
+    case 'phrases': return [...phraseList(screen.value!)!.map((x, i) => c(`phrase:${i}`, x)),
+      ...(screen.value === 'Quick phrases' ? [c('all-categories', 'All categories')] : []), back(), more()];
     case 'repair': {
       const list = words(s.draft);
       return [...list.slice(page * 5, page * 5 + 5).map((x, i) => c(`word:${page * 5 + i}`, x.text, false, `Word ${page * 5 + i + 1}`)),
-        c('next', 'Next words', (page + 1) * 5 >= list.length), c('previous', 'Previous words', page === 0),
+        ...(list.length > 5 ? [c('next', 'Next words', (page + 1) * 5 >= list.length), c('previous', 'Previous words', page === 0)] : []),
         c('spell', 'Add more wording'), back(), more()];
     }
     case 'keyboard': {
       const row = screen.value ?? 'rows';
       if (row === 'rows') return [c('row:abcde', 'A–E'), c('row:fghij', 'F–J'), c('row:klmno', 'K–O'),
-        c('row:pqrst', 'P–T'), c('row:uvwxyz', 'U–Z'), c('row:editing', 'Space and editing'), c('row:navigation', 'Navigation')];
+        c('row:pqrst', 'P–T'), c('row:uvwxyz', 'U–Z'), c('row:editing', 'Editing and controls'),
+        ...(s.repair ? [c('prefix:not', 'Add “do not ” before this word', false, `Stages: do not ${s.draft.slice(s.repair.start, s.repair.end)}`)] : []),
+        c('done', s.repair ? 'Apply correction' : 'Done', !!s.repair && !s.repair.buffer && !s.repair.deleteRequested),
+        c('char: ', 'Space'), c('erase', 'Backspace', !(s.repair?.buffer ?? s.draft))];
       if (row === 'numbers') return [c('row:01234', '0–4'), c('row:56789', '5–9'), c('row:editing', 'Space and editing'), c('row:navigation', 'Navigation'), c('row:rows', 'Letters')];
       if (row === 'punctuation') return [c("row:.,?!'", 'Period, comma, question, exclamation, apostrophe'), c('row:-:;/()', 'Dash, colon, semicolon, slash, parentheses'), c('row:editing', 'Space and editing'), c('row:navigation', 'Navigation'), c('row:rows', 'Letters')];
       if (row === 'editing') return [c('char: ', 'Space'), c('erase', 'Backspace', !(s.repair?.buffer ?? s.draft)),
         c('undo', 'Undo', !(s.repair ? s.repair.undo.length : s.undo.length)),
         c('upper', 'Uppercase next', false, (s.repair?.upper ?? s.upper) ? 'On' : 'Off'),
         c('row:numbers', 'Numbers'), c('row:punctuation', 'Punctuation'),
-        ...(s.repair ? [c('delete-word', 'Delete selected word')] : []), c('row:rows', 'Back to rows')];
+        ...(s.repair ? [c('delete-word', 'Delete selected word')] : []), back(), c('pause', 'Pause scanning'), more(), c('row:rows', 'Back to rows')];
       if (row === 'navigation') return [c('done', s.repair ? 'Apply correction' : 'Done', !!s.repair && !s.repair.buffer && !s.repair.deleteRequested),
         back(), c('pause', 'Pause scanning'), more(), c('row:rows', 'Back to rows')];
       return [...Array.from(row).map(x => c(`char:${x}`, (s.repair?.upper ?? s.upper) ? x.toUpperCase() : x)), c('row:rows', 'Back to rows')];
@@ -83,7 +95,7 @@ export function choices(s: Model): Choice[] {
           !complete ? 'Read every part before speaking.' : !s.settings.voice ? 'Choose an available voice in Settings.' : 'A separate selection authorizes the full message.'),
         c('edit', 'Make changes'), back(), more()];
     }
-    case 'more': return [c('undo', 'Undo', !(s.repair ? s.repair.undo.length : s.undo.length)),
+    case 'more': return [c('home', 'Your message', !!s.repair, s.repair ? 'Finish or cancel the correction first.' : undefined), c('undo', 'Undo', !(s.repair ? s.repair.undo.length : s.undo.length)),
       c('reader', 'Read message', !s.draft), c('settings', 'Settings'), c('clear', 'New message', !s.draft), c('pause', 'Pause scanning'), back()];
     case 'settings': return [c('value:pace', 'Scan pace', false, `${s.settings.pace / 1000} seconds`),
       c('value:size', 'Text size', false, `${s.settings.size}%`), c('voices', 'Voice', false, s.voices.find(x => x.id === s.settings.voice)?.name ?? 'Choose a voice'),
@@ -160,9 +172,11 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
     if (s.screen.name === 'keyboard') { s.repair = null; home(s); }
     else pop(s);
   } else if (id === 'more') go(s, { name: 'more' });
-  else if (id === 'phrases') go(s, { name: 'categories' });
+  else if (id === 'phrases') go(s, { name: 'phrases', value: 'Quick phrases' });
+  else if (id === 'all-categories') go(s, { name: 'categories' });
+  else if (id === 'home') home(s);
   else if (id.startsWith('category:')) go(s, { name: 'phrases', value: id.slice(9) });
-  else if (id.startsWith('phrase:')) { editDraft(s, s.draft + phrases[s.screen.value!]![Number(id.slice(7))]); s.provenance = 'Your words'; home(s); }
+  else if (id.startsWith('phrase:')) { editDraft(s, s.draft + phraseList(s.screen.value!)![Number(id.slice(7))]); s.provenance = 'Your words'; home(s); }
   else if (id === 'spell') { s.repair = null; go(s, { name: 'keyboard', value: 'rows' }); }
   else if (id === 'review') startReview(s);
   else if (id === 'reader') startReview(s, 'reader');
@@ -170,6 +184,10 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id.startsWith('word:')) {
     const word = words(s.draft)[Number(id.slice(5))];
     if (word) { s.repair = { ...word, revision: s.revision, buffer: '', undo: [], upper: false, deleteRequested: false }; go(s, { name: 'keyboard', value: 'rows' }); }
+  } else if (id === 'prefix:not' && s.repair) {
+    editBuffer(s, 'do not ' + s.draft.slice(s.repair.start, s.repair.end));
+    s.screen = { name: 'keyboard', value: 'navigation' };
+    s.notice = 'Replacement staged. Apply correction changes the selected word; Back keeps your original message.';
   } else if (id.startsWith('row:')) s.screen = { name: 'keyboard', value: id.slice(4) };
   else if (id.startsWith('char:')) {
     let value = id.slice(5); if (s.repair?.upper ?? s.upper) value = value.toUpperCase();
@@ -232,4 +250,9 @@ export function interrupt(before: Model, reason: string): Model {
   if (s.authorization) { s.authorization = null; s.speech = 'Stopped'; pop(s); }
   if (s.screen.name !== 'paused') go(s, { name: 'paused' });
   return s;
+}
+/** Fast refresh may retain React state while replacing controllers. Authored
+ * state may survive; an old playback permission must never cross that boundary. */
+export function retireRuntimeAuthorization(before: Model): Model {
+  return before.authorization ? interrupt(before, 'Workspace restarted — speech approval canceled') : before;
 }

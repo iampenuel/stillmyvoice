@@ -5,7 +5,8 @@ type Connection = Awaited<ReturnType<typeof requestSerialAdapter>>;
 type Factory = (chooser: SerialChooser, verify: (port: DataPort) => Promise<boolean>, callbacks: AdapterCallbacks) => Promise<Connection>;
 /** App navigation coordinator. The accepted kernel, framing and transport are unchanged.
  * A new view closes the old verified port before reopening that SAME port, with a
- * fresh epoch/snapshot. Genuine interruptions never reopen automatically. */
+ * fresh epoch/snapshot. Temporary inactivity permits one foreground recovery;
+ * transport faults, explicit disconnect and page teardown do not. */
 export class InputCoordinator {
   state: SwitchState;
   mode: 'none' | 'hardware' | 'simulation' = 'none';
@@ -16,6 +17,7 @@ export class InputCoordinator {
   private flight: Promise<Connection> | null = null;
   private closing: Promise<void> = Promise.resolve();
   private port: DataPort | null = null;
+  private focusRecoveryPort: DataPort | null = null;
   private held = false;
   private view: View;
   private readonly changed: (state: SwitchState, status: string) => void;
@@ -26,17 +28,20 @@ export class InputCoordinator {
   private readonly nonce: () => string;
   private readonly disconnectedSettle: () => Promise<void>;
   private readonly diagnostic: (detail: string) => void;
+  private readonly targetVisible: (id: string) => boolean;
   constructor(view: View, callbacks: {
     changed: (state: SwitchState, status: string) => void;
     selected: (selection: Selection, source: 'hardware' | 'simulation') => void;
     interrupted: (reason: string) => void;
     diagnostic?: (detail: string) => void;
+    targetVisible?: (id: string) => boolean;
   }, factory: Factory = requestSerialAdapter, active = () => document.hasFocus() && document.visibilityState === 'visible', nonce: () => string = () => crypto.randomUUID(),
   disconnectedSettle: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 200))) {
     this.view = view; this.changed = callbacks.changed; this.selected = callbacks.selected;
     this.interrupted = callbacks.interrupted; this.factory = factory; this.active = active; this.nonce = nonce;
     this.disconnectedSettle = disconnectedSettle;
     this.diagnostic = callbacks.diagnostic ?? (() => {});
+    this.targetVisible = callbacks.targetVisible ?? (() => true);
     this.state = createSwitchState(view, nonce());
   }
   private publish() { this.changed(this.state, this.status); }
@@ -46,7 +51,11 @@ export class InputCoordinator {
     state = reduceSwitch(state, { type: 'connect' }).state;
     this.state = state; this.publish(); return state.epoch;
   }
-  private dispatch(event: unknown) {
+  private dispatch(event: unknown): ReturnType<typeof reduceSwitch> {
+    if (event && typeof event === 'object' && 'type' in event && (event.type === 'down' || event.type === 'up')
+      && !this.targetVisible(this.state.view?.targets[this.state.index] ?? '')) {
+      this.stop('Current choice is not fully visible'); return { state: this.state, selection: null };
+    }
     const next = reduceSwitch(this.state, event); this.state = next.state; this.publish();
     if (next.selection && this.mode !== 'none') this.selected(next.selection, this.mode);
     return next;
@@ -73,11 +82,32 @@ export class InputCoordinator {
     await this.closing;
   }
   stop(reason: string, notify = true) {
+    this.focusRecoveryPort = null;
     this.generation++; this.mode = 'none'; this.busy = false; this.held = false;
     this.status = reason; this.dispatch({ type: 'disconnect' });
     this.diagnostic(`Cancelled · ${reason}`);
     void this.retire();
     if (notify) this.interrupted(reason);
+  }
+  /** Temporary inactivity retires authority, not authored communication. The
+   * verified port object may be reused only for one fresh foreground handshake. */
+  suspend(reason: string) {
+    if (this.focusRecoveryPort && this.mode === 'none' && !this.busy) return;
+    const port = this.mode === 'hardware' ? this.port : this.focusRecoveryPort;
+    this.stop(reason);
+    this.focusRecoveryPort = port;
+  }
+  async foreground() {
+    const port = this.focusRecoveryPort;
+    if (!port || !this.active() || this.busy || this.mode !== 'none') return;
+    this.focusRecoveryPort = null; // One attempt. A transport fault never loops.
+    const generation = ++this.generation;
+    this.mode = 'hardware'; this.busy = true;
+    this.status = 'Restoring switch — input blocked'; this.publish();
+    await this.retire();
+    if (generation !== this.generation) return;
+    if (!this.active()) { this.suspend('Page inactive during recovery'); return; }
+    await this.open(port, generation);
   }
   async connect(chooser: SerialChooser, verify: (port: DataPort) => Promise<boolean>) {
     if (this.busy || this.mode === 'hardware') return;
@@ -114,7 +144,11 @@ export class InputCoordinator {
         const next = this.dispatch(message);
         if (next.state.epoch !== message.epoch) throw Error('Input kernel rejected message');
       },
-      cancelled: reason => { if (generation === this.generation) this.stop(reason); },
+      cancelled: reason => {
+        if (generation !== this.generation) return;
+        if (/^(Focus lost|Visibility lost|Inactive)/.test(reason)) this.suspend(reason);
+        else this.stop(reason);
+      },
     });
     this.flight = flight;
     try {
@@ -139,7 +173,7 @@ export class InputCoordinator {
       const port = this.port; this.status = 'Changing view — input blocked'; this.busy = true; this.publish();
       void this.retire().then(() => {
         if (generation !== this.generation) return;
-        if (!this.active()) { this.stop('Page inactive during navigation'); return; }
+        if (!this.active()) { this.suspend('Page inactive during navigation'); return; }
         void this.open(port, generation);
       });
     }
@@ -159,5 +193,5 @@ export class InputCoordinator {
     if (this.state.phase === 'needs-sync') this.dispatch({ type: 'sync', epoch: this.state.epoch, sequence: (this.state.lastSequence ?? -1) + 1, pressed: false });
     else if (this.state.capture) this.dispatch({ type: 'up', epoch: this.state.epoch, sequence: this.state.lastSequence! + 1, downSequence: this.state.capture.downSequence });
   }
-  tick() { if (this.active()) this.dispatch({ type: 'tick', epoch: this.state.epoch }); else this.stop('Page inactive'); }
+  tick() { if (this.active()) this.dispatch({ type: 'tick', epoch: this.state.epoch }); else this.suspend('Page inactive'); }
 }

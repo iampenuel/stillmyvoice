@@ -26,7 +26,9 @@ export function measureReviewPages(text: string, element: HTMLElement): string[]
     margin: '0', padding: '0', width: `${element.clientWidth}px`, font: style.font, lineHeight: style.lineHeight,
     letterSpacing: style.letterSpacing, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
   document.body.append(probe);
-  const height = Math.max(Number.parseFloat(style.lineHeight), window.innerHeight * 0.4);
+  const container = element.parentElement!;
+  const constrained = ['auto', 'scroll'].includes(getComputedStyle(container).overflowY);
+  const height = Math.max(Number.parseFloat(style.lineHeight), constrained ? container.clientHeight - 16 : window.innerHeight * 0.4);
   try { return fitReviewPages(text, value => { probe.textContent = value; return probe.scrollHeight <= height && probe.scrollWidth <= probe.clientWidth; }); }
   finally { probe.remove(); }
 }

@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { choices, choose, initialModel, inputView, interrupt, presented, speechEvent, title, type Model } from './communication/model.mts';
+import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, speechEvent, title, type Model, type Choice } from './communication/model.mts';
 import { InputCoordinator } from './communication/input-coordinator.mts';
 import { browserSpeechEngine, SpeechController } from './communication/speech.mts';
 import { measureReviewPages } from './communication/review-layout.mts';
 import { recoveryMessage } from './communication/recovery.mts';
+import { ChoiceButton } from './communication/ChoiceButton';
+import { fullyVisible, revealInPanel } from './communication/view-layout.mts';
 import type { SerialChooser } from './input/web-serial-adapter.mts';
 import type { SwitchState } from './input/switch-machine.mts';
 
@@ -21,7 +23,11 @@ export function App() {
   const message = useRef<HTMLParagraphElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const simButton = useRef<HTMLButtonElement>(null);
-  const setup = useRef<HTMLDetailsElement>(null);
+  const setup = useRef<HTMLDialogElement>(null);
+  const [companionOpen, setCompanionOpen] = useState(false);
+  const [pageActivity, setPageActivity] = useState(() => ({ focused: document.hasFocus(), visible: document.visibilityState === 'visible' }));
+  const choiceRegion = useRef<HTMLDivElement>(null);
+  const messageRegion = useRef<HTMLDivElement>(null);
   const simulationSource = useRef<string | null>(null);
   const voiceUpdate = useRef<(() => void) | null>(null);
   const startPending = useRef<(() => void) | null>(null);
@@ -33,6 +39,8 @@ export function App() {
   };
 
   useEffect(() => {
+    const retired = retireRuntimeAuthorization(current.current);
+    if (retired !== current.current) commit(retired);
     const controller = new InputCoordinator(inputView(current.current), {
       changed: (next, detail) => { setInput(next); setStatus(detail); },
       selected: (selection, source) => {
@@ -47,6 +55,12 @@ export function App() {
       },
       interrupted: reason => cancel(reason),
       diagnostic: record,
+      targetVisible: id => {
+        const button = buttons.current.get(id);
+        return !!button && !!choiceRegion.current && !setup.current?.open
+          && controller.state.view?.revision === current.current.uiRevision
+          && button.parentElement?.dataset.scan === 'true' && fullyVisible(button, choiceRegion.current);
+      },
     });
     coordinator.current = controller;
     const synth = window.speechSynthesis;
@@ -67,9 +81,10 @@ export function App() {
     const blur = () => {
       // The native permission picker can temporarily blur before port opening.
       // The accepted adapter guards opening and every post-open focus loss.
-      if (controller.state.connected || controller.mode === 'simulation' || current.current.authorization) controller.stop('Focus lost — reconnect or resume explicitly');
+      if (controller.state.connected || controller.mode === 'simulation' || current.current.authorization) controller.suspend('Focus lost — communication preserved');
     };
-    const visibility = () => { if (document.visibilityState !== 'visible') controller.stop('Page hidden — input and speech stopped'); };
+    const focus = () => { if (active() && !setup.current?.open) void controller.foreground(); };
+    const visibility = () => { if (document.visibilityState !== 'visible') controller.suspend('Page hidden — communication preserved'); else focus(); };
     let dimensions = `${window.innerWidth}:${window.innerHeight}:${window.visualViewport?.scale ?? 1}`;
     const resize = () => {
       const next = `${window.innerWidth}:${window.innerHeight}:${window.visualViewport?.scale ?? 1}`;
@@ -81,19 +96,37 @@ export function App() {
       else if (current.current.review) cancel('Layout changed — review again before speaking');
     };
     const unload = () => controller.stop('Page unloaded');
-    window.addEventListener('blur', blur); window.addEventListener('resize', resize); window.addEventListener('pagehide', unload);
+    let lastActivity = '';
+    const checkActivity = () => {
+      const focused = document.hasFocus(), visible = document.visibilityState === 'visible';
+      const key = focused + ':' + visible;
+      if (key !== lastActivity) {
+        lastActivity = key; setPageActivity({ focused, visible }); record('Browser page · focused ' + focused + ' · visible ' + visible);
+        if (focused && visible && !setup.current?.open) void controller.foreground();
+      }
+      // Some browser-chrome transitions do not deliver a window blur. This also
+      // covers companion-approved pending/playing speech without a serial poll.
+      if (!(focused && visible) && (controller.state.connected || controller.mode === 'simulation' || current.current.authorization)) controller.suspend('Inactive page — communication preserved');
+    };
+    const activityTimer = setInterval(checkActivity, 25); checkActivity();
+    window.addEventListener('blur', blur); window.addEventListener('focus', focus); window.addEventListener('resize', resize); window.addEventListener('pagehide', unload);
     document.addEventListener('visibilitychange', visibility);
     window.visualViewport?.addEventListener('resize', resize);
     return () => {
       controller.stop('Workspace closed', false); speech.current?.cancel();
-      window.removeEventListener('blur', blur); window.removeEventListener('resize', resize); window.removeEventListener('pagehide', unload);
+      clearInterval(activityTimer);
+      window.removeEventListener('blur', blur); window.removeEventListener('focus', focus); window.removeEventListener('resize', resize); window.removeEventListener('pagehide', unload);
       document.removeEventListener('visibilitychange', visibility); window.visualViewport?.removeEventListener('resize', resize);
       if (synth && voiceUpdate.current) synth.removeEventListener('voiceschanged', voiceUpdate.current);
       coordinator.current = null;
     };
   }, []);
 
-  useLayoutEffect(() => { coordinator.current?.setView(inputView(model)); }, [model.uiRevision]);
+  useLayoutEffect(() => {
+    coordinator.current?.setView(inputView(model));
+    // Only a new view resets panel position; scan ticks and held captures do not.
+    if (choiceRegion.current) choiceRegion.current.scrollTop = 0;
+  }, [model.uiRevision]);
   useLayoutEffect(() => {
     if ((model.screen.name !== 'review' && model.screen.name !== 'reader') || !message.current || !model.review) return;
     const pages = measureReviewPages(model.draft, message.current);
@@ -101,7 +134,7 @@ export function App() {
       commit({ ...current.current, uiRevision: current.current.uiRevision + 1, screen: { ...model.screen, page: 0 },
         review: { revision: model.revision, pages, seen: [] } });
     }
-    message.current.scrollIntoView({ block: 'center', behavior: 'instant' });
+    if (messageRegion.current) { messageRegion.current.scrollTop = 0; revealInPanel(message.current, messageRegion.current); }
   }, [model.screen.name, model.screen.page, model.revision, model.settings.size]);
   const target = input?.view?.targets[input.index];
   const scanning = input?.phase === 'armed' && input.connected && input.active;
@@ -109,10 +142,7 @@ export function App() {
   useLayoutEffect(() => {
     if (!(scanning || held) || !target) return;
     const element = buttons.current.get(target);
-    if (element) {
-      const rect = element.getBoundingClientRect();
-      if (rect.top < 12 || rect.bottom > window.innerHeight - 12) element.scrollIntoView({ block: 'center', behavior: 'instant' });
-    }
+    if (element && choiceRegion.current) revealInPanel(element, choiceRegion.current);
   }, [target, scanning, held, model.uiRevision]);
 
   useEffect(() => {
@@ -128,17 +158,16 @@ export function App() {
     if (model.screen.name !== 'review' || held || !message.current || !model.review) return;
     const revision = model.revision, page = model.screen.page ?? 0, exactPage = model.review.pages[page];
     const visible = () => {
-      if (!active() || coordinator.current?.state.phase === 'held') return;
+      if (!active() || setup.current?.open || coordinator.current?.busy || coordinator.current?.state.phase === 'held') return;
       const element = message.current;
       if (!element) return;
-      const rect = element.getBoundingClientRect();
-      if (rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth
+      if (messageRegion.current && fullyVisible(element, messageRegion.current)
         && element.scrollHeight <= element.clientHeight + 1) commit(presented(current.current, revision, page, exactPage));
     };
     const observer = new IntersectionObserver(visible, { threshold: 1 }); observer.observe(message.current);
     const frame = requestAnimationFrame(visible); window.addEventListener('focus', visible);
     return () => { observer.disconnect(); cancelAnimationFrame(frame); window.removeEventListener('focus', visible); };
-  }, [model.screen.name, model.screen.page, model.revision, model.settings.size, model.review?.pages, held]);
+  }, [model.screen.name, model.screen.page, model.revision, model.settings.size, model.review?.pages, held, scanning, companionOpen]);
 
   useEffect(() => {
     const auth = model.authorization;
@@ -146,14 +175,13 @@ export function App() {
     const controller = coordinator.current;
     const start = () => {
       const latest = current.current;
-      if (!active() || latest.authorization?.id !== auth.id || latest.screen.name !== 'speaking') return;
+      if (!active() || setup.current?.open || latest.authorization?.id !== auth.id || latest.screen.name !== 'speaking') return;
       // The physical path needs a fresh, released Stop target before any audio.
       if (controller?.mode !== 'none' && (controller?.state.phase !== 'armed' || controller?.state.view?.revision !== latest.uiRevision)) return;
       const stopButton = buttons.current.get('stop');
-      if (!stopButton) return;
-      stopButton.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-      const rect = stopButton.getBoundingClientRect();
-      if (rect.top < 0 || rect.bottom > window.innerHeight) return;
+      if (!stopButton || !choiceRegion.current) return;
+      revealInPanel(stopButton, choiceRegion.current);
+      if (!fullyVisible(stopButton, choiceRegion.current)) return;
       if (!speech.current) { commit(speechEvent(latest, auth.id, 'error')); return; }
       speech.current.start(auth, () => active() && current.current.authorization?.id === auth.id
         && current.current.revision === auth.revision, event => {
@@ -187,9 +215,21 @@ export function App() {
   }
   const displayed = (model.screen.name === 'review' || model.screen.name === 'reader') && model.review
     ? model.review.pages[model.screen.page ?? 0] : model.draft;
-  const list = choices(model);
+  const sections = choiceSections(model);
   const recovery = recoveryMessage(status, !!input?.connected, !!coordinator.current?.busy, input?.phase);
-  return <main style={{ '--text-scale': model.settings.size / 100 } as CSSProperties}
+  const openSetup = () => {
+    coordinator.current?.stop('Companion setup opened');
+    speech.current?.cancel(); setCompanionOpen(true); setup.current?.showModal();
+  };
+  const renderChoice = (option: Choice) => {
+    const selected = !!((scanning || held) && target === option.id && input?.view?.revision === model.uiRevision);
+    const shown = option.id === 'resume' && !(scanning || held)
+      ? { ...option, label: 'Return to message', detail: 'Companion control. This does not reconnect the switch.' } : option;
+    return <ChoiceButton key={option.id} option={shown} selected={selected} held={held}
+      register={element => { if (element) buttons.current.set(option.id, element); else buttons.current.delete(option.id); }}
+      activate={() => companion(option.id)} />;
+  };
+  return <main data-large-text={model.settings.size >= 150} data-page-focused={pageActivity.focused} data-page-visible={pageActivity.visible} style={{ '--text-scale': model.settings.size / 100 } as CSSProperties}
     onPointerDownCapture={event => {
       if (event.target !== simButton.current && coordinator.current?.mode !== 'none') {
         coordinator.current?.stop('Companion pointer — physical scanning paused', false);
@@ -199,73 +239,82 @@ export function App() {
         }
       }
     }}
+    onWheelCapture={() => { if (coordinator.current?.mode !== 'none') coordinator.current?.stop('Manual scrolling — communication paused'); }}
     onKeyDownCapture={event => {
       if (event.key === 'Tab' && coordinator.current?.mode !== 'none') coordinator.current?.stop('Keyboard navigation — scan paused');
     }}>
     <header className="masthead"><div className="wordmark" aria-label="SMV — Still My Voice">SMV</div>
       <div><p className="product-name">Still My Voice</p><p className="tagline">Communication, on your terms.</p></div>
       <span className="prototype">Non-clinical prototype</span></header>
-    <div className="status-strip" aria-label="Input status"><span>{coordinator.current?.mode === 'simulation' ? 'Simulation' : coordinator.current?.mode === 'hardware' ? 'Physical switch' : 'Input paused'}</span>
+    <div className="status-strip" aria-label="Input status">
+      <span className="input-mode">{coordinator.current?.mode === 'simulation' ? 'Simulation' : coordinator.current?.mode === 'hardware' ? 'Physical switch' : 'Input paused'}</span>
       <span>{held ? 'Held · release to choose' : scanning ? model.screen.name === 'paused' ? 'Ready to resume' : 'Scanning' : recovery.label}</span>
-      <span>{input?.pressed === null || !input ? 'Awaiting synchronization' : input.pressed ? 'Pressed' : 'Released'}</span></div>
+      <span className="input-position">{input?.pressed === null || !input ? 'Awaiting synchronization' : input.pressed ? 'Pressed' : 'Released'}</span>
+    </div>
     <div className="communication-workspace">
       <section className="message-panel" aria-labelledby="message-title">
-        <div className="panel-heading"><h1 id="message-title">Your message</h1><span className="provenance">{model.provenance}</span></div>
-        {(model.screen.name === 'review' || model.screen.name === 'reader') && model.review ?
-          <p className="page-label">Part {(model.screen.page ?? 0) + 1} of {model.review.pages.length} · Exact wording</p> : null}
-        <p ref={message} className={`message-text${model.draft ? '' : ' placeholder'}`} data-testid="message-text">{displayed || 'Your words will appear here.'}</p>
-        {model.repair ? <div className="correction"><p>Replacing: <strong>{model.draft.slice(model.repair.start, model.repair.end)}</strong></p>
-          <p>New wording: <span className="exact">{model.repair.buffer || '(nothing entered)'}</span></p><p>Only this occurrence changes when you choose Apply correction.</p></div> : null}
-        <p className="speech-state" aria-live="polite">{model.speech}</p>
-        {model.lastPlayed !== null && model.speech !== 'Playback finished' ? <p className="small">A previous message was played. Speaking again requires new approval.</p> : null}
-        <p className="small">Your draft stays in this tab’s memory. Reloading or closing the page clears it.</p>
-        {model.screen.name === 'review' ? <p className="small">Read every part, then make a separate selection on “Speak exactly this.” Playback completion does not confirm that someone heard it.</p> : null}
+        <div className="panel-heading"><h1 id="message-title">Your message</h1><span className="provenance">{model.provenance}</span>
+          {(model.screen.name === 'review' || model.screen.name === 'reader') && model.review
+            ? <p className="page-label">Part {(model.screen.page ?? 0) + 1} of {model.review.pages.length} · Exact wording</p> : null}
+        </div>
+        <div ref={messageRegion} className="message-content" tabIndex={0} aria-label="Message reading area">
+          <p ref={message} className={'message-text' + (model.draft ? '' : ' placeholder')} data-testid="message-text">{displayed || 'Your words will appear here.'}</p>
+          {model.repair ? <div className="correction"><p>Selected word: <strong>{model.draft.slice(model.repair.start, model.repair.end)}</strong></p>
+            <p className="replacement-label">Replacement</p><p className="replacement exact">{model.repair.buffer || 'Choose letters or a shortcut.'}</p>
+            <p className="small">Your message changes only when you choose Apply correction.</p></div> : null}
+        </div>
+        <div className="message-footer">
+          <p className="speech-state" aria-live="polite">{model.repair ? 'Correction not applied' : model.speech}</p>
+          {model.screen.name === 'review' ? <p className="small">Review every part. A new selection on Speak approves the exact full message.</p>
+            : model.lastPlayed !== null && model.speech !== 'Playback finished' ? <p className="small">Previously played. New approval is required to speak again.</p> : null}
+        </div>
       </section>
       <section className="interaction-panel" aria-labelledby="interaction-title">
-        <h2 id="interaction-title" aria-live="polite">{model.screen.name === 'paused' ? 'Communication paused' : title(model)}</h2>
-        {model.screen.name === 'paused' && !scanning ? <div className="notice" role="status"><p>{recovery.guidance}</p>
-          <button type="button" onClick={() => { if (setup.current) { setup.current.open = true; setup.current.scrollIntoView({ block: 'nearest', behavior: 'instant' }); } }}>Open Companion setup</button></div>
-          : model.notice && model.screen.name !== 'paused' ? <p className="notice" role="status">{model.notice}</p> : null}
-        <div className="choices">{list.map(option => {
-          const selected = (scanning || held) && target === option.id && input?.view?.revision === model.uiRevision;
-          return <div className="target-envelope" key={option.id} data-scan={selected} data-held={selected && held}>
-            <button ref={element => { if (element) buttons.current.set(option.id, element); else buttons.current.delete(option.id); }}
-              type="button" disabled={option.disabled} onClick={() => companion(option.id)}
-              onPointerDown={() => { if (coordinator.current?.state.phase === 'held') coordinator.current.stop('Companion pointer interrupted a hold', false); }}
-              onKeyDown={event => { if (event.key === 'Tab' && coordinator.current?.mode !== 'none') coordinator.current?.stop('Keyboard navigation — scan paused'); }}>
-              <span className="choice-label">{option.id === 'resume' && !scanning ? 'Return to message' : option.label}</span>{option.id === 'resume' && !scanning ? <span className="choice-detail">Companion control. This does not reconnect the switch.</span> : option.detail ? <span className="choice-detail">{option.detail}</span> : null}
-              <span className="scan-label" aria-hidden="true">{selected && held ? 'Release to choose' : selected ? 'Scan focus' : '\u00a0'}</span>
-            </button></div>;
-        })}</div>
+        <div className="panel-heading"><h2 id="interaction-title" aria-live="polite">{model.screen.name === 'paused' ? 'Communication paused' : title(model)}</h2>
+          <span className="panel-caption">{model.screen.name === 'review' ? 'Your approval, your words.' : model.screen.name === 'speaking' ? 'Stop speaking cancels playback.' : 'One press and release to choose.'}</span>
+        </div>
+        <div ref={choiceRegion} className="interaction-scroll" tabIndex={0} aria-label="Communication choices">
+          {model.screen.name === 'paused' && !(scanning || held) ? <div className="notice" role="status"><p>{recovery.guidance}</p>
+            <button type="button" onClick={openSetup}>Open Companion setup</button></div>
+            : model.notice && model.screen.name !== 'paused' ? <p className="notice" role="status">{model.notice}</p> : null}
+          <div className="choices" data-grid={model.screen.name === 'phrases' || model.screen.name === 'keyboard' || model.screen.name === 'repair'}>
+            {sections.primary.map(renderChoice)}
+          </div>
+          {sections.navigation.length ? <div className="navigation-choices">{sections.navigation.map(renderChoice)}</div> : null}
+        </div>
       </section>
     </div>
-    <details ref={setup} className="setup"><summary>Companion setup and input diagnostics</summary>
-      <p>Mouse and keyboard controls pause physical scanning. Browser port permission may require companion assistance.</p>
-      <p>{status} · {speech.current ? `${model.voices.length} browser voices discovered` : 'Browser speech unavailable'}</p>
-      <p>For this verified USB attachment: Pico /dev/cu.usbmodem103 is CDC2 data interface 3. Recheck OS interface ancestry after reattachment; the console port is not suitable.</p>
+    <footer><p>Draft kept in this tab. Reloading clears it.</p><button type="button" className="setup-trigger" onClick={openSetup}>Companion setup</button>
+      {coordinator.current?.mode === 'simulation' ? <button ref={simButton} type="button" className="simulation-switch"
+        onPointerDown={e => { if (e.button === 0) { e.currentTarget.setPointerCapture(e.pointerId); simulationDown('pointer:' + e.pointerId); } }}
+        onPointerUp={e => simulationUp('pointer:' + e.pointerId)} onPointerCancel={() => coordinator.current?.stop('Simulation pointer cancelled')}
+        onLostPointerCapture={() => { if (simulationSource.current) coordinator.current?.stop('Simulation capture lost'); }}
+        onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (!e.repeat) simulationDown('key:' + e.key); } }}
+        onKeyUp={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); simulationUp('key:' + e.key); } }}
+        onBlur={() => { if (simulationSource.current) coordinator.current?.stop('Simulation focus lost'); }}>Simulated switch · hold, then release</button> : null}
+    </footer>
+    <dialog ref={setup} className="setup" aria-labelledby="setup-title" onClose={() => setCompanionOpen(false)}>
+      <div className="setup-heading"><h2 id="setup-title">Companion setup</h2><button type="button" onClick={() => setup.current?.close()}>Done</button></div>
+      <p>Setup pauses input and speech. Close this panel before using the switch. Browser port permission may require companion assistance.</p>
+      <p className="technical-status">{status} · {speech.current ? model.voices.length + ' browser voices discovered' : 'Browser speech unavailable'}</p>
+      <p>Browser page: {pageActivity.focused ? 'focused' : 'not focused'} · {pageActivity.visible ? 'visible' : 'hidden'}</p>
+      <p>Verified attachment: Pico /dev/cu.usbmodem103 is CDC2 data interface 3. Recheck OS ancestry after reattachment; do not use the console port.</p>
       <label><input type="checkbox" checked={verified} disabled={coordinator.current?.mode === 'hardware' || coordinator.current?.busy} onChange={e => setVerified(e.target.checked)} /> I will choose the independently verified dedicated CDC2 data port.</label>
       <div className="controls"><button type="button" disabled={!('serial' in navigator) || !verified || coordinator.current?.busy || coordinator.current?.mode === 'hardware'} onClick={() => {
         const controller = coordinator.current;
         if (!controller) return;
+        setup.current?.close();
         void controller.connect((navigator as Navigator & { serial: SerialChooser }).serial, async port => {
           const info = port.getInfo(); return verified && info.usbVendorId === 0x239a && info.usbProductId === 0x80f4;
         });
       }}>Connect Pico</button>
         <button type="button" onClick={() => coordinator.current?.stop('Explicit disconnect')}>Pause / disconnect Pico</button></div>
-      <h3>Local simulation — not hardware evidence</h3>
-      <div className="controls"><button type="button" disabled={coordinator.current?.mode === 'hardware' || coordinator.current?.busy} onClick={() => {
-        coordinator.current?.simulate(); simButton.current?.focus();
+      <h3>Local simulation</h3><p>Simulation uses the same selection safeguards. It is not physical test evidence.</p>
+      <button type="button" disabled={coordinator.current?.mode === 'hardware' || coordinator.current?.busy} onClick={() => {
+        setup.current?.close(); coordinator.current?.simulate(); requestAnimationFrame(() => simButton.current?.focus());
       }}>Start simulation</button>
-        <button ref={simButton} type="button" disabled={coordinator.current?.mode !== 'simulation'}
-          onPointerDown={e => { if (e.button === 0) { e.currentTarget.setPointerCapture(e.pointerId); simulationDown(`pointer:${e.pointerId}`); } }}
-          onPointerUp={e => simulationUp(`pointer:${e.pointerId}`)} onPointerCancel={() => coordinator.current?.stop('Simulation pointer cancelled')}
-          onLostPointerCapture={() => { if (simulationSource.current) coordinator.current?.stop('Simulation capture lost'); }}
-          onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (!e.repeat) simulationDown(`key:${e.key}`); } }}
-          onKeyUp={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); simulationUp(`key:${e.key}`); } }}
-          onBlur={() => { if (simulationSource.current) coordinator.current?.stop('Simulation focus lost'); }}>Simulated switch · hold, then release</button></div>
-      <p>Accepted actions: physical {counts.hardware} · simulated {counts.simulation} · companion {counts.companion}</p>
-      <details><summary>Recent lifecycle events — no message text</summary><ol className="log">{log.map((entry, i) => <li key={i}>{entry}</li>)}</ol></details>
-    </details>
-    <footer>SMV · Still My Voice · Communication, on your terms.</footer>
+      <p className="evidence-counts">Accepted actions: physical {counts.hardware} · simulated {counts.simulation} · companion {counts.companion}</p>
+      <details><summary>Lifecycle diagnostics — no message text</summary><ol className="log">{log.map((entry, i) => <li key={i}>{entry}</li>)}</ol></details>
+    </dialog>
   </main>;
 }

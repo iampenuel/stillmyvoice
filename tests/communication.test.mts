@@ -18,7 +18,7 @@ function reviewed(text?: string) {
 }
 test('phrase composition and review never authorize speech; a fresh activation freezes exact text', () => {
   let s = initialModel('instance'); s.settings.voice = 'fixture';
-  s = step(step(step(s, 'phrases'), 'category:Comfort'), 'phrase:0');
+  s = step(step(s, 'phrases'), 'phrase:2');
   assert.equal(s.draft, 'Please reposition me.'); assert.equal(s.authorization, null);
   s = step(s, 'review'); const oldRevision = s.uiRevision;
   assert.equal(s.authorization, null); assert.equal(choose(s, 'speak', s.uiRevision), s);
@@ -45,20 +45,20 @@ test('correction changes one occurrence, preserves punctuation/whitespace, and U
     s = step(step(s, `row:${row}`), `char:${char}`);
   }
   assert.equal(s.draft, 'left,  left!');
-  s = step(step(s, 'row:navigation'), 'done'); assert.equal(s.draft, 'left,  right!');
+  s = step(s, 'done'); assert.equal(s.draft, 'left,  right!');
   s = step(step(s, 'more'), 'undo'); assert.equal(s.draft, 'left,  left!'); assert.equal(s.authorization, null);
 });
 test('empty correction is not deletion; explicit deletion stages then applies', () => {
   let s = step(step(step(message('No. Thank you.'), 'review'), 'edit'), 'word:0');
-  s = step(s, 'row:navigation'); assert.equal(choose(s, 'done', s.uiRevision), s);
-  s = step(step(s, 'row:rows'), 'row:editing'); s = step(s, 'delete-word');
+  assert.equal(choose(s, 'done', s.uiRevision), s);
+  s = step(s, 'row:editing'); s = step(s, 'delete-word');
   assert.equal(s.draft, 'No. Thank you.'); s = step(s, 'done'); assert.equal(s.draft, '. Thank you.');
 });
 test('spelling, case, punctuation and intentional clear are switch reachable without text normalization', () => {
   let s = step(initialModel('spelling'), 'spell');
   s = step(step(s, 'row:editing'), 'upper'); s = step(step(s, 'row:rows'), 'row:fghij'); s = step(s, 'char:i');
   s = step(step(s, 'row:editing'), 'char: '); s = step(step(s, 'row:klmno'), 'char:n');
-  s = step(step(s, 'row:navigation'), 'done'); assert.equal(s.draft, 'I n');
+  s = step(s, 'done'); assert.equal(s.draft, 'I n');
   s = step(step(s, 'more'), 'clear'); assert.equal(s.draft, 'I n');
   s = step(s, 'confirm-clear'); assert.equal(s.draft, '');
   s = step(step(s, 'more'), 'undo'); assert.equal(s.draft, 'I n');

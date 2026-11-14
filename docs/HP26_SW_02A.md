@@ -1,6 +1,8 @@
 # SW-02A — communication recovery checkpoint
 
-Status: **PARTIAL**, November 14, 2026. Recovery precedes UI refinement and subsequent gated milestones.
+Status: **owner-reported physical communication flow passed**, November 14, 2026. The owner subsequently confirmed physical navigation, review/approval, editing a prior message and hearing its corrected wording. This applies to the exercised flow only; spelling/correction were reported slow. No universal recovery or usability acceptance is claimed. Latest UI/session changes and their pending repeat are recorded in [UX-03 / SESSION-01](HP26_UX_03_SESSION_01.md).
+
+The investigation and original repeat below are historical checkpoint evidence, retained to avoid rewriting the uncertain fault history. The owner's deliberate refresh was not a fault. The targeted cleanup fix/regression remains in place.
 
 ## Evidence and investigation
 
@@ -18,7 +20,7 @@ During the fresh browser connection check, the first attempt rejected a malforme
 
 Phrase categories, grouped spelling, occurrence-specific correction, staged deletion, Undo, intentional clear, Pause/Resume, complete review paging, immutable separate authorization, browser voices/preview/rate and stationary Stop exist. Drafts and approvals stay in tab memory. Reducer, freshness calculations, wire format and firmware remain unchanged. Protocol/adapter edits add diagnostics and separate fatal reasons without relaxing validation.
 
-The coordinator retires each view and reopens the same independently verified port after cleanup/settling, with a fresh unpredictable epoch and snapshot. Genuine interruptions require explicit reconnection. No buffered input is relabeled, no release fabricated, and holds do not repeat.
+The coordinator retires each view and reopens the same independently verified port after cleanup/settling, with a fresh unpredictable epoch and snapshot. At this earlier checkpoint genuine interruptions required explicit reconnection; SESSION-01 now permits one fresh foreground handshake after temporary inactivity, followed by an explicit Resume cycle. Faults still require companion recovery. No buffered input is relabeled, no release fabricated, and holds do not repeat.
 
 The model cannot play audio. Speak freezes exact text/revision/voice/rate/provider into a one-use authorization. The physical route waits for the new Stop view to be synchronized and released before audio. Stop, focus loss, transport errors and edits revoke approval. Late callbacks cannot replay speech. Entire review pages must be presented before Speak is enabled; presentation is not proof of reading.
 
@@ -30,7 +32,7 @@ The model cannot play audio. Speak freezes exact text/revision/voice/rate/provid
 - Owner-confirmed basic-path audibility is distinct from observed browser start/end events.
 - Live approved v2/boot hashes matched; OS ancestry still identifies CDC2 data interface 3. No competing serial session was observed. No firmware, boot or wiring changes.
 
-## Physical repeat — pending
+## Earlier physical repeat — owner subsequently reported success
 
 Keep the intended SMV tab focused. Do not refresh on failure; logs are in-memory.
 
