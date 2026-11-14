@@ -15,6 +15,7 @@ export interface SerialChooser {
 export type Environment = {
   window: EventTarget;
   document: EventTarget;
+  visible: () => boolean;
   active: () => boolean;
   now: () => number;
   nonce: () => string;
@@ -23,6 +24,7 @@ export type Environment = {
 };
 export const browserEnvironment = (): Environment => ({
   window, document,
+  visible: () => document.visibilityState === 'visible',
   active: () => document.visibilityState === 'visible' && document.hasFocus(),
   now: () => performance.now(),
   nonce: () => crypto.randomUUID(),
@@ -36,7 +38,45 @@ export type AdapterCallbacks = {
   epoch: (instanceId: string) => string;
   input: (message: InputMessage) => void;
   cancelled: (reason: string) => void;
+  waitingForFocus?: () => void;
 };
+
+// Chrome's chooser can resolve before document focus is restored. This is a
+// pre-open wait only: no port, DTR, epoch, input or scanning exists yet. Hidden
+// pages/unload abort, and a short deadline prevents an abandoned attempt from
+// opening later. Once open begins, every genuine blur still cancels immediately.
+async function waitForPickerFocus(env: Environment, waiting?: () => void) {
+  if (!env.visible()) throw Error('Page must be visible');
+  if (env.active()) return;
+  waiting?.();
+  await new Promise<void>((resolve, reject) => {
+    const started = env.now();
+    let done = false;
+    let cancelTimer = () => {};
+    const finish = (error?: Error) => {
+      if (done) return;
+      done = true;
+      cancelTimer();
+      env.window.removeEventListener('focus', check);
+      env.window.removeEventListener('pagehide', unload);
+      env.document.removeEventListener('visibilitychange', check);
+      if (error) reject(error); else resolve();
+    };
+    const unload = () => finish(Error('Page unloaded before connection'));
+    const check = () => {
+      const elapsed = env.now() - started;
+      if (!env.visible()) finish(Error('Page hidden before connection'));
+      else if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 3000) {
+        finish(Error('Focus did not return; focus the diagnostic and click Connect Pico again'));
+      } else if (env.active()) finish();
+    };
+    env.window.addEventListener('focus', check);
+    env.window.addEventListener('pagehide', unload);
+    env.document.addEventListener('visibilitychange', check);
+    cancelTimer = env.every(check, 25);
+    check();
+  });
+}
 
 /** Call directly from a user gesture. No getPorts(), automatic reconnect or guessing
  * interface order. verifySelection must verify the dedicated CDC2 interface using
@@ -51,6 +91,7 @@ export async function requestSerialAdapter(
   // Execute before the first await so the browser can enforce user activation.
   const port = await serial.requestPort({ filters: [{ usbVendorId: 0x239a, usbProductId: 0x80f4 }] });
   if (!await verifySelection(port)) throw Error('Dedicated data interface was not verified');
+  await waitForPickerFocus(env, callbacks.waitingForFocus);
   if (!env.active()) throw Error('Page must be focused and visible');
 
   let stopped = false;

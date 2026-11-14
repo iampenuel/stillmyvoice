@@ -175,9 +175,13 @@ test('an UP timestamp preceding the captured DOWN is rejected', () => {
 });
 
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
-async function fakeBrowser(verified = true, failWrite = false) {
+async function fakeBrowser(verified = true, failWrite = false, picker?: {
+  returned: (controls: { focus: () => void; blur: () => void; hide: () => void;
+    advance: (ms: number) => void; window: EventTarget; calls: string[]; inputs: InputMessage[]; outputs: Uint8Array[] }) => Promise<void>;
+}) {
   let time = 0;
   let active = true;
+  let visible = true;
   let poll = () => {};
   const calls: string[] = [];
   const outputs: Uint8Array[] = [];
@@ -200,15 +204,77 @@ async function fakeBrowser(verified = true, failWrite = false) {
   }();
   const env: Environment = {
     window: new EventTarget(), document: new EventTarget(), now: () => time, nonce: () => 'fresh:uuid',
-    active: () => active, every: cb => { poll = cb; return () => { poll = () => {}; }; }, settle: async () => {},
+    visible: () => visible, active: () => active, every: cb => { poll = cb; return () => { poll = () => {}; }; }, settle: async () => {},
   };
-  const adapter = await requestSerialAdapter({ requestPort: async () => { calls.push('requestPort'); return port; } },
+  const adapter = await requestSerialAdapter({ requestPort: async () => {
+    calls.push('requestPort');
+    if (picker) await picker.returned({
+      focus: () => { active = true; env.window.dispatchEvent(new Event('focus')); },
+      blur: () => { active = false; env.window.dispatchEvent(new Event('blur')); },
+      hide: () => { visible = false; env.document.dispatchEvent(new Event('visibilitychange')); },
+      advance: ms => { time += ms; poll(); },
+      window: env.window, calls, inputs, outputs,
+    });
+    return port;
+  } },
     async () => { calls.push('verifyCDC2'); return verified; },
     { epoch: id => id, input: m => { inputs.push(m); }, cancelled: r => { cancelled.push(r); } }, env);
   await flush();
   return { adapter, env, port, calls, outputs, inputs, cancelled, controller,
     time: (n: number) => { time = n; }, inactive: () => { active = false; }, poll: () => poll() };
 }
+
+test('serial picker may resolve before focus returns: wait without opening, then synchronize while held', async () => {
+  let restoreFocus!: () => void;
+  let calls!: string[];
+  let outputs!: Uint8Array[];
+  let inputs!: InputMessage[];
+  const connecting = fakeBrowser(true, false, { returned: async controls => {
+    controls.blur();
+    restoreFocus = controls.focus;
+    ({ calls, outputs, inputs } = controls);
+  } });
+  // Native chooser promise resolves while document.hasFocus() is still false.
+  await flush();
+  assert.deepEqual(calls, ['requestPort', 'verifyCDC2']);
+  assert.equal(outputs.length, 0);
+  assert.equal(inputs.length, 0);
+  restoreFocus();
+  const f = await connecting;
+  f.time(10);
+  f.controller.enqueue(bytes({ v: 2, type: 'sync', epoch: 'fresh:uuid', sequence: 0, tick_ms: 10, pressed: true }));
+  await flush();
+  assert.equal(f.inputs.length, 1);
+  assert.equal(f.inputs[0].type, 'sync');
+  assert.equal(f.cancelled.length, 0);
+  f.time(20);
+  f.controller.enqueue(bytes({ v: 2, type: 'sync', epoch: 'fresh:uuid', sequence: 1, tick_ms: 20, pressed: false }));
+  await flush();
+  assert.deepEqual(f.inputs.map(m => m.type), ['sync', 'sync']);
+  f.adapter.stop(); await f.adapter.closed;
+});
+
+test('abandoned picker focus wait expires or cancels without opening, and late focus cannot revive it', async () => {
+  for (const cause of ['timeout', 'hidden', 'unload']) {
+    let abandon!: () => void;
+    let restoreFocus!: () => void;
+    let calls!: string[];
+    const connecting = fakeBrowser(true, false, { returned: async controls => {
+      controls.blur();
+      calls = controls.calls;
+      restoreFocus = controls.focus;
+      abandon = cause === 'timeout' ? () => controls.advance(3000)
+        : cause === 'hidden' ? controls.hide : () => controls.window.dispatchEvent(new Event('pagehide'));
+    } });
+    const rejected = assert.rejects(connecting, /Focus did not return|Page hidden|Page unloaded/);
+    await flush();
+    abandon();
+    await rejected;
+    restoreFocus();
+    await flush();
+    assert.deepEqual(calls, ['requestPort', 'verifyCDC2'], cause);
+  }
+});
 
 test('browser chooser precedes interface verification/open; DTR is asserted and full frame written once', async () => {
   const f = await fakeBrowser(); await flush();

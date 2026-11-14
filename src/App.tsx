@@ -22,7 +22,12 @@ export function App() {
   const [verifiedPort, setVerifiedPort] = useState(false);
   const serialAvailable = 'serial' in navigator;
 
-  const dispatch = useCallback((event: unknown) => {
+  const record = useCallback((text: string) => {
+    const entry = { id: ++logId.current, text: `${performance.now().toFixed(0)} ms: ${text}` };
+    setLog(entries => [...entries.slice(-39), entry]);
+  }, []);
+
+  const dispatch = useCallback((event: unknown, detail?: string) => {
     const before = current.current;
     const next = reduceSwitch(before, event);
     current.current = next.state;
@@ -38,12 +43,10 @@ export function App() {
     } else if (next.state.phase === 'armed' && before.phase !== 'armed') {
       message = mode.current === 'hardware' ? 'Hardware released and armed.' : 'Simulator released and armed. No hardware input is connected.';
     }
-    if (message) {
-      const entry = { id: ++logId.current, text: message };
-      setLog(entries => [...entries.slice(-39), entry]);
-    }
+    if (detail) message = message ? `${message} ${detail}` : detail;
+    if (message) record(message);
     return next;
-  }, []);
+  }, [record]);
 
   const cancelHeld = useCallback(() => {
     heldInput.current = null;
@@ -137,6 +140,10 @@ export function App() {
           return verifiedPort && info.usbVendorId === 0x239a && info.usbProductId === 0x80f4;
         },
         {
+          waitingForFocus: () => {
+            setHardware('Waiting for page focus — input blocked');
+            record('Picker returned before page focus; port remains unopened.');
+          },
           epoch: instanceId => {
             const priorCount = mode.current === 'hardware' ? current.current.selections : 0;
             mode.current = 'hardware';
@@ -149,10 +156,14 @@ export function App() {
             setState(fresh);
             setLastSelection(null);
             setHardware('Synchronizing — input blocked');
+            record(`New hardware session ${instanceId.slice(0, 8)}; awaiting fresh synchronization.`);
             return fresh.epoch;
           },
           input: message => {
-            const next = dispatch(message);
+            const detail = `V2 ${message.type.toUpperCase()} session=${message.epoch.slice(0, 8)} seq=${message.sequence} tick=${message.tick_ms}`
+              + (message.type === 'sync' ? ` pressed=${message.pressed}` : '')
+              + (message.type === 'up' ? ` downSequence=${message.downSequence}` : '');
+            const next = dispatch(message, detail);
             if (next.state.epoch !== message.epoch) {
               throw Error('Input kernel rejected message');
             }
@@ -162,17 +173,22 @@ export function App() {
           cancelled: reason => {
             ended = true;
             setHardware(`Stopped: ${reason}. Reconnect explicitly to recover.`);
-            dispatch({ type: 'disconnect' });
+            dispatch({ type: 'disconnect' }, `Transport stopped: ${reason}.`);
           },
         },
       );
       if (ended) await connection.closed;
       else {
         adapter.current = connection;
-        void connection.closed.then(() => { if (adapter.current === connection) adapter.current = null; });
+        void connection.closed.then(() => {
+          if (adapter.current === connection) adapter.current = null;
+          record('Serial cleanup completed; next connection requires a new session.');
+        });
       }
     } catch (error) {
-      setHardware(`Not connected: ${error instanceof Error ? error.message : 'Serial error'}`);
+      const reason = error instanceof Error ? error.message : 'Serial error';
+      record(`Connection attempt failed: ${reason}.`);
+      setHardware(`Not connected: ${reason}`);
     } finally { setConnecting(false); }
   }
 
