@@ -1,0 +1,34 @@
+:root { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17191c; background: #f5f6f7; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1080px; margin: auto; padding: 24px; }
+h1 { font-size: 26px; margin: 8px 0; }
+h2 { font-size: 19px; font-weight: 600; margin-top: 0; }
+p { line-height: 1.5; }
+.brand { font-size: 17px; margin: 0; font-weight: 600; }
+header > p:last-child, .note { color: #555d66; }
+.connection { display: grid; gap: 8px; padding: 18px 0 24px; border-bottom: 1px solid #7b828a; }
+.connection button { justify-self: start; }
+.workspace { display: grid; grid-template-columns: 44fr 56fr; gap: 32px; margin: 32px 0; }
+.result { padding: 24px; background: white; border-radius: 8px; }
+.chosen { font-size: 32px; min-height: 48px; margin: 24px 0; overflow-wrap: anywhere; }
+dl > div { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #d5d9de; }
+dd { margin: 0; font-weight: 600; }
+.targets { list-style: none; padding: 10px; margin: 0; display: grid; gap: 24px; }
+.targets li { display: grid; gap: 2px; padding: 12px 18px; min-height: 106px; border: 2px solid #7b828a; border-radius: 8px; background: white; outline: 3px solid transparent; outline-offset: 3px; }
+.targets strong { font-size: 24px; font-weight: 500; }
+.targets [data-scan="true"] { outline-color: #185adb; background: #edf3ff; }
+.targets [data-held="true"] { outline-color: #0f3e9e; background: #dce7ff; }
+.selection-mark { color: #235e43; font-size: 15px; }
+.simulation { border-top: 1px solid #7b828a; padding-top: 24px; }
+.controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: stretch; }
+button { font: inherit; padding: 12px 18px; min-height: 48px; border: 1.5px solid #7b828a; border-radius: 6px; background: white; color: inherit; cursor: pointer; }
+button:disabled { cursor: default; background: #eef0f2; color: #5d6670; }
+button:focus-visible, summary:focus-visible { outline: 2px solid #17191c; outline-offset: 4px; }
+.simulated-switch { touch-action: none; user-select: none; }
+.simulated-switch:active:not(:disabled) { background: #dce7ff; }
+details { margin-top: 28px; border-top: 1px solid #7b828a; padding-top: 16px; }
+summary { cursor: pointer; }
+.log { max-height: 240px; overflow: auto; padding-left: 28px; line-height: 1.6; font-size: 14px; overflow-wrap: anywhere; }
+@media (max-width: 700px) { main { padding: 16px; } .workspace { grid-template-columns: 1fr; } .controls { flex-direction: column; } }
+@media (forced-colors: active) { .targets [data-scan="true"] { outline-color: Highlight; } .targets [data-held="true"] { outline-style: double; } }

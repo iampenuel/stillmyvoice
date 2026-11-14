@@ -17,6 +17,8 @@ settings.toml
 .DS_Store
 ._*
 node_modules/
+/.local-cache/
+*.tsbuildinfo
 dist/
 coverage/
 output/

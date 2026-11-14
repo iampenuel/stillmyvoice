@@ -1,4 +1,10 @@
-# Project state — HP26-SW-00 v1.1
+# Project state — HP26-SW-01 firmware approval checkpoint
+
+Current update, November 14, 2026: storage recovery cleared the 5 GiB gate (private manifests outside Git); the user explicitly authorized SW-01 in the existing external workspace. The approved design direction was committed separately as `52a34ed`. A React/TypeScript/Vite diagnostic and deterministic input kernel now exist. Fourteen Node tests passed; seven desktop tests of proposed firmware session logic passed; Chrome simulation and the production build were checked. Actual hardware-to-browser integration remains untested and blocked on explicit approval of the proposed Pico files. No CIRCUITPY writes or serial control commands occurred. The latest hard internal completion/submission target is November 14 at 22:00 Eastern.
+
+Read [HP26_SW_01.md](HP26_SW_01.md) for the current implementation, exact proposed board changes, recovery procedure and remaining physical tests. The earlier SW-00 observations below are retained as historical evidence; statements that no scaffold or tests existed describe that earlier checkpoint.
+
+## Historical HP26-SW-00 v1.1 checkpoint
 
 Recorded November 14, 2026, America/New_York. Product: StillMyVoice; slug: `stillmyvoice`. Engineering handoff: HP26-ENG-TO-ADMIN-v1.0.
 
