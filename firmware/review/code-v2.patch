@@ -1,14 +1,12 @@
-diff --git a/firmware/proposed/code.py b/firmware/review/code-v2.py
-index 25646fd..7d52113 100644
---- a/firmware/proposed/code.py
-+++ b/firmware/review/code-v2.py
+--- installed-v1/code.py
++++ proposed-v2/code.py
 @@ -1,4 +1,4 @@
 -"""PROPOSED HP26-SW-01 CDC input; NOT installed or physically validated.
 +"""UNAPPROVED HP26-SW-01 protocol v2 candidate; NOT installed.
  
  Original RP2040 Pico H / CircuitPython 10.3.2. GP1 to GND, internal pull-up.
  GP25 onboard LED only. No arcade lamp, HID events, speech, reset or disk writes.
-@@ -10,7 +10,8 @@ import json
+@@ -10,7 +10,8 @@
  class SwitchSession:
      """Track observed debounced state and bind edges to a fresh host challenge."""
  
@@ -18,7 +16,7 @@ index 25646fd..7d52113 100644
          self.pressed = pressed
          self.cancel()
  
-@@ -21,8 +22,8 @@ class SwitchSession:
+@@ -21,8 +22,8 @@
          self.pending = None
  
      def message(self, kind, **fields):
@@ -29,7 +27,7 @@ index 25646fd..7d52113 100644
  
      def synchronize(self, epoch):
          if (not isinstance(epoch, str) or not 1 <= len(epoch) <= 128
-@@ -34,7 +35,7 @@ class SwitchSession:
+@@ -34,7 +35,7 @@
          self.armed = not self.pressed
          return self.message('sync', pressed=self.pressed)
  
@@ -38,7 +36,7 @@ index 25646fd..7d52113 100644
          if pressed == self.pressed:
              return None
          self.pressed = pressed
-@@ -49,11 +50,17 @@ class SwitchSession:
+@@ -49,11 +50,17 @@
          self.sequence += 1
          if pressed:
              self.pending = self.sequence
@@ -58,7 +56,7 @@ index 25646fd..7d52113 100644
          # An unmatched observed release must not manufacture a completed cycle.
          self.cancel()
          return None
-@@ -65,6 +72,7 @@ def main():
+@@ -65,6 +72,7 @@
      import digitalio
      import keypad
      import usb_cdc
@@ -66,7 +64,7 @@ index 25646fd..7d52113 100644
  
      data = usb_cdc.data
      if data is None:
-@@ -106,7 +114,7 @@ def main():
+@@ -106,7 +114,7 @@
                             interval=0.01, debounce_threshold=3, max_events=32)
          keys.events.clear()
          keys.reset()
@@ -75,7 +73,7 @@ index 25646fd..7d52113 100644
          line = bytearray()
          was_connected = False
  
-@@ -126,7 +134,7 @@ def main():
+@@ -126,7 +134,7 @@
                  event = keys.events.get()
                  if event is None:
                      break
@@ -84,7 +82,7 @@ index 25646fd..7d52113 100644
                  led.value = session.pressed
                  if connected:
                      transmit(message)
-@@ -140,11 +148,19 @@ def main():
+@@ -140,11 +148,19 @@
                          command = json.loads(line.decode('utf-8'))
                          line = bytearray()
                          if (not isinstance(command, dict) or type(command.get('v')) is not int
@@ -92,7 +90,8 @@ index 25646fd..7d52113 100644
 -                                or command.get('type') != 'sync'
 -                                or set(command) != {'v', 'type', 'epoch'}):
 +                                or command.get('v') != 2):
-+                            raise ValueError('Unexpected CDC command')
+                             raise ValueError('Unexpected CDC command')
+-                        transmit(session.synchronize(command.get('epoch')))
 +                        if command.get('type') == 'sync' and set(command) == {'v', 'type', 'epoch'}:
 +                            transmit(session.synchronize(command.get('epoch')))
 +                        elif (command.get('type') == 'ping'
@@ -103,8 +102,7 @@ index 25646fd..7d52113 100644
 +                              and all(c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-' for c in command['nonce'])):
 +                            transmit(session.message('pong', nonce=command['nonce']))
 +                        else:
-                             raise ValueError('Unexpected CDC command')
--                        transmit(session.synchronize(command.get('epoch')))
++                            raise ValueError('Unexpected CDC command')
                      else:
                          line.append(byte)
                          if len(line) > 256:

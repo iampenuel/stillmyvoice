@@ -1,4 +1,8 @@
-# Project state — HP26-SW-01 firmware approval checkpoint
+# Project state — HP26-SW-01 physical acceptance in progress
+
+Current update, November 14, 2026: the user explicitly approved v2 code.py SHA-256 `75917ecc41ef3a66bc234bc022ff6f1543abbcf0856503dfa68ee83e00088747`. After fresh verified v1 preservation, only code.py was replaced; the live hash and normal startup banner were verified and all other readable board file hashes remained unchanged. The Web Serial adapter is implemented in the existing diagnostic. Thirty-three Node tests, ten desktop Python tests and TypeScript checking passed. Real CDC2 communication and the first physical selections have been observed. Physical acceptance is underway; its detailed evidence is private. See [the complete v2 review, protocol and rollback procedure](FIRMWARE_V2_REVIEW.md). No AI, speech, gaze or UI redesign is authorized in this milestone. Stop after the physical-integration report for review of the next phase.
+
+The notes below describe earlier checkpoints and are retained as history; their approval/install/implementation gates have been superseded by the current paragraph.
 
 Latest update after user reconnection: both approved files are now installed and hash-verified. CIRCUITPY is accessible; boot output reports CircuitPython 10.3.2 without boot errors. USB ancestry identifies console interface 1 and dedicated CDC2 data interface 3. The approved program's startup banner appeared without a traceback in an eight-second console capture; that console session is closed and the data port has not been opened. Physical GP1/LED and browser acceptance remain untested. A requirement gap was identified: v1 lacks event-generation timestamps and non-disruptive heartbeat, needed to reject delayed same-epoch input. See [the exact uninstalled v2 revision and approval gate](FIRMWARE_V2_REVIEW.md). Do not alter the approved sources or install v2 without separate approval. Prior stage notes below are historical.
 

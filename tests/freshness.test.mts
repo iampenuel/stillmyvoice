@@ -1,11 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clockSample, eventIsFresh } from '../src/input/freshness.mts';
+import { clockSample, clockSamplesAgree, eventIsFresh } from '../src/input/freshness.mts';
 
 test('fresh device events pass while delayed events within the same epoch fail', () => {
   const clock = clockSample(1000, 1020, 500);
   assert.equal(eventIsFresh(550, 1080, clock), true);
   assert.equal(eventIsFresh(550, 1400, clock), false);
+});
+
+test('successive clock anchors agree across the early wrap but reject stopped or jumping clocks', () => {
+  const previous = clockSample(0, 10, 2 ** 29 - 100);
+  assert.equal(clockSamplesAgree(previous, clockSample(200, 210, 100)), true);
+  assert.equal(clockSamplesAgree(previous, clockSample(200, 210, 2 ** 29 - 100)), false);
+  assert.equal(clockSamplesAgree(previous, clockSample(200, 210, 500)), false);
 });
 test('device clock wrap is handled without making stale events fresh', () => {
   const clock = clockSample(0, 10, 2 ** 29 - 20);

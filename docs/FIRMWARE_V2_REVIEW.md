@@ -1,30 +1,70 @@
-# Narrow freshness revision — approval required
+# HP26-SW-01 — firmware v2 review and installation record
 
-November 14, 2026. The approved v1 boot.py and code.py are now installed and match their reviewed hashes. CIRCUITPY remounted with CircuitPython 10.3.2 and no boot error. IORegistry parent/child relationships identify console at `/dev/cu.usbmodem101` (CircuitPython CDC data, interface 1) and the dedicated channel at `/dev/cu.usbmodem103` (CircuitPython CDC2 data, interface 3). These names are observations for this attachment, not a permanent port-order rule.
+November 14, 2026. The user subsequently approved the exact candidate below. Only `code.py` was replaced. Its live hash matches; the normal CircuitPython startup banner appeared without a traceback during an eight-second console capture. All nine other readable files retained their hashes, including `boot.py`. The console was closed before browser data access. No reflash, wiring, lamp, library, setting or USB configuration change occurred.
 
-The approved code's startup banner appeared during an eight-second console capture, with no traceback. The console was closed afterward; the data port has not been opened. GP1 input and LED behavior still need actual physical observation. No wiring or lamp connection was changed.
+## Exact review artifacts
 
-## Why another approval is necessary
+- [Complete v2 code.py](../firmware/review/code-v2.py), SHA-256 `75917ecc41ef3a66bc234bc022ff6f1543abbcf0856503dfa68ee83e00088747`.
+- [Exact unified diff](../firmware/review/code-v2.patch), generated from the live installed v1 bytes before replacement. The `installed-v1` label identifies that preserved source, not the current live v2 file.
+- Preserved v1 SHA-256: `362d20d7509d825ddec0c504ac01c4c9b3751cc0b9ec1e1c4bb620d8cf76922c`.
+- Unchanged boot.py SHA-256: `0c5622734d4a8936552eccca9146819867ef37b2b684f868b77497f9c9c9fe02`.
 
-The newly explicit adapter requirements include rejection of delayed buffered input and liveness/freshness controls. V1 supplies sequence and epoch but no event-generation time or non-disruptive heartbeat. Fresh and delayed bytes from the same epoch are indistinguishable to a receiver. Host receive timestamps alone cannot solve this. Repeated `sync` requests would cancel held input. This gap should have been identified in the original proposal review.
+The source's historical “UNAPPROVED / NOT installed” docstring was intentionally left unchanged to preserve the exact approved hash; this record supplies current status. Approval and installation do not establish physical acceptance.
 
-Do not enable physical selections with that requirement unresolved. No physical acceptance result is claimed. The browser serial adapter remains incomplete.
+## Scope and protocol
 
-## Exact candidate
+V1 lacked event-generation timestamps and a non-disruptive heartbeat. Host receive times cannot distinguish old buffered DOWN/UP messages from fresh ones within the same epoch. Repeated synchronization would cancel held captures. This gap should have been identified in the original proposal review.
 
-Only a further code.py replacement is proposed. **Not installed or approved.**
+V2 changes only the protocol version, message timestamps and nonce-echo heartbeat. GP1, the onboard LED, debounce, startup release gate and queue bounds remain unchanged. The browser initiates every connection through the Web Serial permission chooser and asserts DTR after opening. It never auto-reconnects or guesses port order.
 
-- [Complete candidate source](../firmware/review/code-v2.py)
-- [Exact diff against the approved v1 source](../firmware/review/code-v2.patch)
-- Candidate SHA-256: `75917ecc41ef3a66bc234bc022ff6f1543abbcf0856503dfa68ee83e00088747`
-- Installed approved v1 SHA-256: `362d20d7509d825ddec0c504ac01c4c9b3751cc0b9ec1e1c4bb620d8cf76922c`
+Every device message has exactly `v`, `type`, `epoch`, `sequence`, `tick_ms`, plus these fields:
 
-Changes: explicit protocol version 2; `tick_ms` on messages; actual keypad event timestamps on DOWN/UP; a nonce-echo `ping`/`pong` command that leaves held captures and edge sequence untouched. GP1 wiring, debounce, startup release gate, LED behavior, USB configuration and all other board files remain as approved. boot.py does not need another change.
+| Type | Additional fields | Meaning |
+|---|---|---|
+| `sync` | `pressed` boolean | Fresh state snapshot; never a selection |
+| `down` | none | Debounced press; sequence advances once |
+| `up` | `downSequence` integer | Observed matching release; sequence advances once |
+| `pong` | `nonce` string | Heartbeat reply; edge sequence unchanged |
+| `fault` | none | Cancel input immediately |
 
-CircuitPython documents [keypad event timestamps](https://docs.circuitpython.org/en/stable/shared-bindings/keypad/#keypad.Event.timestamp) in the [supervisor.ticks_ms clock](https://docs.circuitpython.org/en/stable/shared-bindings/supervisor/#supervisor.ticks_ms), which wraps at 2**29 milliseconds. The proposed browser freshness helper handles that wrap, rejects slow clock evidence and old/future events, and expires stale heartbeat evidence. Its 100 ms round-trip, 250 ms event-age, 1 second clock-evidence lifetime and 5 ms short-term clock allowance are conservative prototype trial settings, not physically validated guarantees.
+Host commands are `{"v":2,"type":"sync","epoch":"fresh-unpredictable-epoch"}` and `{"v":2,"type":"ping","epoch":"same-epoch","nonce":"fresh-unpredictable-nonce"}`, each newline-terminated. Initial sync sequence is zero. Reconnect while already pressed remains unarmed; the observed release sends a subsequent released `sync`, not an `up`. A new DOWN/UP pair is required to select. On a USB power cycle while pressed, the existing startup release gate must clear before the firmware command loop starts.
 
-Actual off-board results: 17 Node tests passed (including three new freshness cases); seven existing desktop session tests and three new protocol-review tests passed; TypeScript checking passed. The new tests confirm that event-generation time is retained rather than replaced by transmit time, and heartbeat creation does not cancel a hold. Serial I/O, full command-loop behavior and CircuitPython imports have not been exercised by those tests.
+## Freshness and cancellation
 
-After approval, finish the strict v2 Web Serial adapter and its transport tests, install only the approved candidate, verify runtime output, and proceed to user-operated physical acceptance. Fresh connection and heartbeat nonces must be checked before clock evidence is trusted. Keep selection disabled on any failed framing, sequencing, freshness, focus or connection check.
+1. **Clock synchronization:** Each connection/recovery gets a new `crypto.randomUUID()` identity and derived epoch. The echoed-epoch sync and echoed-nonce pongs must arrive within 100 ms of their challenges. If device tick `d` is sampled during host request/response interval `[s,r]`, that tick occurred within `[s,r]`; no wall-clock equality is assumed. Host time uses `performance.now()`.
+2. **Wraparound:** `supervisor.ticks_ms()` wraps modulo `2**29` ms. CircuitPython initializes it so the first wrap occurs approximately 65 seconds after power-on. Signed modular differences handle that wrap and later ones. Tests cross a wrap with both edges and a heartbeat. Successive clock intervals must agree within a 5 ms short-term allowance; a stopped/jumping clock is rejected instead of silently reanchored.
+3. **Buffered events:** DOWN/UP retain `keypad.Event.timestamp` from generation, rather than transmit time. For wrapped delta `eventTick-d`, the earliest plausible host event time is `s+delta-5`. An edge is rejected if that time is in the future or older than 250 ms at delivery. Both edges require exact version/epoch, consecutive sequence and current clock evidence; UP must match and cannot predate the captured DOWN. This permits bounded latency, not zero delay or a hard real-time guarantee.
+4. **Heartbeat:** The adapter polls every 25 ms, challenges after 200 ms without a new anchor, expires a challenge after 100 ms, and rejects evidence older than 1 second. A processing gap over 250 ms cancels before consuming a delayed read. Nonce and current edge sequence are checked before trusting a pong. Heartbeats never refresh a queued edge's timestamp.
+5. **Focus, loss and errors:** Blur, hidden visibility, unload, port loss, EOF, read/write errors, malformed framing, stale input or invalid clock evidence synchronously retire the session and cancel the capture. Stream teardown follows. Restored focus alone does not rearm. Reconnect/reload needs explicit action, a fresh epoch and state snapshot. Old input cannot be relabeled into the new session.
 
-Recovery remains available: restore the currently approved v1 code.py if this revision fails; for full original-diagnostic recovery, restore the verified original code.py and remove only the added boot.py under the documented controlled procedure. Preserve the private original and fresh snapshots. No recovery, reflash or extra board change was performed here.
+**Heartbeats never create selections, manufacture releases, advance scanning or authorize speech.** They are not forwarded to the reducer. Only a validated matching DOWN/UP pair can select the frozen target/revision. No speech, AI or gaze exists in this milestone.
+
+Timing thresholds and the 5 ms allowance are prototype trial settings. Device clock accuracy, host scheduling, suspend/resume and loaded-system reliability require physical validation. A conservative timeout may stop valid input; it must never become a synthesized UP.
+
+## Browser implementation and evidence
+
+Implementation: `src/input/web-serial-adapter.mts`, `serial-protocol.mts`, and `freshness.mts`. Web Streams owns partial OS writes; commands are awaited and serialized, without retrying uncertain prefixes. Read fragments accumulate only to a bounded 511-byte line. Duplicate/unknown fields, malformed data and excessive chunks/message counts fail closed.
+
+The existing three-target diagnostic labels physical and simulated input separately; simulator controls cannot inject into an active hardware session. Web Serial exposes VID/PID but not interface number or OS path: the operator verifies the chooser path against OS USB ancestry. On this attachment, `CircuitPython CDC2 data@3` maps to `/dev/cu.usbmodem103`; console interface 1 maps to `/dev/cu.usbmodem101`. These are observations, not permanent port-order assumptions. The actual chooser selection was checked against this identity before opening. No competing monitor uses the data port.
+
+Observed automated results: **33 Node tests passed, 10 desktop Python tests passed, TypeScript checking passed.** Coverage includes fragmented reads, ten simulated cycles through protocol/reducer, a simulated 60-second hold with heartbeats, buffered/late events, clock discontinuity/wrap, malformed fields, pairing failures, partial-write failure, focus/visibility/unload/port loss, and safe rearming. Python tests cover session logic, not CircuitPython hardware imports or the complete GPIO/USB loop.
+
+Observed hardware communication: the real v2 handshake completed; the page reported Released / Scanning with count zero. Physical acceptance results are recorded privately, separating browser observations from user-reported switch/LED behavior. No simulated result is counted as a physical result.
+
+## Precise preservation and rollback procedure
+
+Before installation, candidate/v1/boot hashes and both original diagnostic backups were rechecked. No competing callout/dial-in serial sessions were observed. Fresh external snapshot identifier: `HP26-SW-01_v1_before_v2_2026-11-14T17-02-57Z`. All 10 readable files and 3 directories were copied; SHA-256 hashes matched a stable source inventory. **All readable files verified; `.Trashes` not backed up (sole approved exclusion). This is not a complete full-volume backup.** The exact path, per-file manifest and console log remain outside Git.
+
+Before any further board write: stop browser selection, close data access, verify no competing sessions and recheck current/source hashes. Stop on unexpected content or unreadable files. Preserve another uniquely named verified readable-file snapshot; never overwrite existing backups.
+
+To roll back v2 **only after explicit rollback authorization**:
+
+1. Stop selection and close serial sessions. Verify CIRCUITPY is the intended Pico and its code hash is the approved v2 hash; stop on unexpected content.
+2. Verify the preserved snapshot's `board/code.py` is a readable regular file matching the v1 hash above. Recheck its manifest and the unchanged boot.py hash.
+3. Copy only those verified v1 bytes to `/Volumes/CIRCUITPY/code.py`; flush/fsync, independently reread and hash the live file. Do not move the backup or write another file; leave boot.py unchanged.
+4. Observe normal auto-reload/startup through the verified console and close it. Keep the v2-only adapter disabled because v1 lacks freshness evidence. Confirm all other readable file hashes remain unchanged; record results privately.
+5. If startup is absent or safe mode appears, stop and preserve errors. Do not reflash, alter boot.py or perform repeated speculative resets.
+
+Full original-diagnostic recovery is separate: original code SHA-256 `570535c6d1c6e6a80249fe5cb7dbc6f1d0118356d26d97989f889c0466cad421`. Removing boot.py to restore the original USB layout is **outside the current code.py-only authorization** and requires separate approval plus controlled eject/reconnection. No rollback was performed.
+
+References: [keypad timestamps](https://docs.circuitpython.org/en/stable/shared-bindings/keypad/#keypad.Event.timestamp), [supervisor clock and early wrap](https://docs.circuitpython.org/en/stable/shared-bindings/supervisor/#supervisor.ticks_ms), [Web Serial activation, signals and streams](https://developer.chrome.com/docs/capabilities/serial).

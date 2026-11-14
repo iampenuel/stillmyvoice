@@ -1,4 +1,4 @@
-// Clock evidence for the unapproved v2 protocol; not connected to hardware yet.
+// Clock evidence for protocol v2. Thresholds remain prototype trial settings.
 const period = 2 ** 29;
 export type ClockSample = Readonly<{ sent: number; received: number; tick: number }>;
 const validTick = (n: number) => Number.isInteger(n) && n >= 0 && n < period;
@@ -14,4 +14,14 @@ export function eventIsFresh(tick: number, now: number, sample: ClockSample): bo
   // The 5 ms allowance covers short-term clock uncertainty; trial values only.
   const earliest = sample.sent + delta - 5;
   return earliest <= now && now - earliest <= 250;
+}
+
+export function clockSamplesAgree(previous: ClockSample, next: ClockSample): boolean {
+  const delta = ((next.tick - previous.tick + period * 1.5) % period) - period / 2;
+  // Each sampled device tick must occur within its host request/response interval.
+  // Require overlap, allowing 5 ms short-term drift, rather than silently
+  // reanchoring a stopped/jumping device clock and rejuvenating buffered events.
+  return next.sent >= previous.received && next.received - previous.received <= 1000
+    && previous.sent + delta - 5 <= next.received
+    && previous.received + delta + 5 >= next.sent;
 }
