@@ -194,6 +194,10 @@ export function App() {
     onPointerDownCapture={event => {
       if (event.target !== simButton.current && coordinator.current?.mode !== 'none') {
         coordinator.current?.stop('Companion pointer — physical scanning paused', false);
+        if (current.current.authorization) {
+          speech.current?.cancel();
+          commit({ ...current.current, authorization: null, speech: 'Stopped' });
+        }
       }
     }}
     onKeyDownCapture={event => {
