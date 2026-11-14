@@ -1,4 +1,10 @@
-# Project state — HP26-SW-01 physical input acceptance passed
+# Project state — SW-02A communication implementation, physical checks pending
+
+Current authorized work: the owner's master implementation directive authorizes the communication workspace, functional UI polish, ElevenLabs speech, direct free-tier Gemini assistance, optional short-batch transcription, and release preparation in that order. SW-02A is implemented with **46 passing Node tests**, TypeScript checking and production build. Chrome companion testing observed silent composition/review, then speech start and completion only after a separate approval action. Audibility and the new workspace's physical end-to-end route remain pending. See [SW-02A evidence and limitations](HP26_SW_02A.md). Do not interpret accepted SW-01 diagnostic evidence as acceptance of the new navigation/speech integration.
+
+The accepted input modules and Pico firmware remain unchanged. Browser/OS permission remains companion-assisted. No cloud credentials are configured in the process or repository; no cloud calls or expenditure have occurred. Preferred branding domain is **stillmyvoice.ai**, with ownership/registration unverified; [branding boundaries](BRANDING.md) prohibit using it as a production configuration assumption. All source work remains in the existing external repository. The earlier SW-01 stop gates below are historical and superseded by the master directive.
+
+## Accepted SW-01 baseline
 
 Current acceptance, November 14, 2026: ten ordinary physical cycles produced ten selections; the prolonged hold did not repeat (duration/stability user-reported); interrupted USB holds, manual held reconnect, genuine focus loss without Pause, and reload while held recovered without selecting on release. Browser logs verified fresh pressed snapshots, release-only synchronization, and new matching DOWN/UP cycles. The final reload session selected once only after the new cycle. The diagnostic is now paused after focus loss, with no serial sessions observed. Detailed evidence and user reports are retained privately. The earlier ambiguous selection-13 run is excluded from acceptance; explicit repeats supplied the evidence.
 

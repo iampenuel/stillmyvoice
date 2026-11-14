@@ -1,292 +1,256 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createSwitchState, reduceSwitch, type Selection } from './input/switch-machine.mts';
-import { requestSerialAdapter, type SerialChooser } from './input/web-serial-adapter.mts';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { choices, choose, initialModel, interrupt, presented, speechEvent, title, type Model } from './communication/model.mts';
+import { InputCoordinator } from './communication/input-coordinator.mts';
+import { browserSpeechEngine, SpeechController } from './communication/speech.mts';
+import { measureReviewPages } from './communication/review-layout.mts';
+import type { SerialChooser } from './input/web-serial-adapter.mts';
+import type { SwitchState } from './input/switch-machine.mts';
 
-const targets = ['Target one', 'Target two', 'Target three'];
-const view = { id: 'diagnostic', revision: 1, targets };
-const scanIntervalMs = 1600; // Provisional diagnostic timing, not a validated access setting.
-
+const active = () => document.hasFocus() && document.visibilityState === 'visible';
+function inputView(model: Model) {
+  const targets = choices(model).filter(x => !x.disabled).map(x => x.id);
+  const start = model.focusId ? Math.max(0, targets.indexOf(model.focusId)) : 0;
+  return { id: model.screen.name, revision: model.uiRevision, targets: [...targets.slice(start), ...targets.slice(0, start)] };
+}
 export function App() {
-  const [state, setState] = useState(() => createSwitchState(view, crypto.randomUUID()));
-  const current = useRef(state);
-  const [lastSelection, setLastSelection] = useState<Selection | null>(null);
-  const [log, setLog] = useState<{ id: number; text: string }[]>([]);
-  const logId = useRef(0);
-  const switchButton = useRef<HTMLButtonElement>(null);
-  const heldInput = useRef<string | null>(null);
-  const focusAfterResume = useRef(false);
-  const mode = useRef<'simulation' | 'hardware'>('simulation');
-  const adapter = useRef<Awaited<ReturnType<typeof requestSerialAdapter>> | null>(null);
-  const [hardware, setHardware] = useState('Not connected');
-  const [connecting, setConnecting] = useState(false);
-  const [verifiedPort, setVerifiedPort] = useState(false);
-  const serialAvailable = 'serial' in navigator;
+  const [model, render] = useState(() => initialModel(crypto.randomUUID()));
+  const current = useRef(model);
+  const coordinator = useRef<InputCoordinator | null>(null);
+  const speech = useRef<SpeechController | null>(null);
+  const [input, setInput] = useState<SwitchState | null>(null);
+  const [status, setStatus] = useState('Not connected');
+  const [verified, setVerified] = useState(false);
+  const [counts, setCounts] = useState({ hardware: 0, simulation: 0, companion: 0 });
+  const [log, setLog] = useState<string[]>([]);
+  const message = useRef<HTMLParagraphElement>(null);
+  const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const simButton = useRef<HTMLButtonElement>(null);
+  const simulationSource = useRef<string | null>(null);
+  const voiceUpdate = useRef<(() => void) | null>(null);
+  const startPending = useRef<(() => void) | null>(null);
+  const commit = (next: Model) => { current.current = next; render(next); };
+  const record = (entry: string) => setLog(old => [...old.slice(-29), `${Math.round(performance.now())} ms · ${entry}`]);
+  const cancel = (reason: string) => {
+    speech.current?.cancel(); simulationSource.current = null;
+    commit(interrupt(current.current, reason)); record(reason);
+  };
 
-  const record = useCallback((text: string) => {
-    const entry = { id: ++logId.current, text: `${performance.now().toFixed(0)} ms: ${text}` };
-    setLog(entries => [...entries.slice(-39), entry]);
+  useEffect(() => {
+    const controller = new InputCoordinator(inputView(current.current), {
+      changed: (next, detail) => { setInput(next); setStatus(detail); },
+      selected: (selection, source) => {
+        const before = current.current;
+        if (selection.viewId !== before.screen.name || selection.revision !== before.uiRevision) return;
+        const next = choose(before, selection.targetId, selection.revision);
+        if (next === before) return;
+        if (!next.authorization) speech.current?.cancel();
+        setCounts(old => ({ ...old, [source]: old[source] + 1 }));
+        record(`${source} selection accepted · ${selection.viewId} · ${selection.ordinal}`);
+        commit(next);
+      },
+      interrupted: reason => cancel(reason),
+    });
+    coordinator.current = controller;
+    const synth = window.speechSynthesis;
+    if (synth) {
+      const engine = browserSpeechEngine(synth);
+      speech.current = new SpeechController(engine);
+      const voicesChanged = () => {
+        if (controller.state.phase === 'held' || current.current.authorization) return;
+        const voices = engine.voices();
+        const before = current.current;
+        if (JSON.stringify(before.voices) === JSON.stringify(voices)) return;
+        const voice = before.settings.voice || voices.find(v => v.local && v.lang.startsWith('en'))?.id || voices[0]?.id || '';
+        commit({ ...before, voices, uiRevision: before.uiRevision + 1, settings: { ...before.settings, voice } });
+      };
+      voiceUpdate.current = voicesChanged;
+      synth.addEventListener('voiceschanged', voicesChanged); voicesChanged();
+    }
+    const blur = () => {
+      if (controller.mode !== 'none' || current.current.authorization) controller.stop('Focus lost — reconnect or resume explicitly');
+    };
+    const visibility = () => { if (document.visibilityState !== 'visible') controller.stop('Page hidden — input and speech stopped'); };
+    let dimensions = `${window.innerWidth}:${window.innerHeight}:${window.visualViewport?.scale ?? 1}`;
+    const resize = () => {
+      const next = `${window.innerWidth}:${window.innerHeight}:${window.visualViewport?.scale ?? 1}`;
+      // visualViewport width also changes when a scrollbar appears. That is not
+      // a zoom/window change; reacting to it would make long/short views oscillate.
+      if (next === dimensions) return;
+      dimensions = next;
+      if (controller.mode !== 'none' || current.current.authorization) controller.stop('Layout changed — input and speech stopped');
+      else if (current.current.review) cancel('Layout changed — review again before speaking');
+    };
+    const unload = () => controller.stop('Page unloaded');
+    window.addEventListener('blur', blur); window.addEventListener('resize', resize); window.addEventListener('pagehide', unload);
+    document.addEventListener('visibilitychange', visibility);
+    window.visualViewport?.addEventListener('resize', resize);
+    return () => {
+      controller.stop('Workspace closed', false); speech.current?.cancel();
+      window.removeEventListener('blur', blur); window.removeEventListener('resize', resize); window.removeEventListener('pagehide', unload);
+      document.removeEventListener('visibilitychange', visibility); window.visualViewport?.removeEventListener('resize', resize);
+      if (synth && voiceUpdate.current) synth.removeEventListener('voiceschanged', voiceUpdate.current);
+      coordinator.current = null;
+    };
   }, []);
 
-  const dispatch = useCallback((event: unknown, detail?: string) => {
-    const before = current.current;
-    const next = reduceSwitch(before, event);
-    current.current = next.state;
-    setState(next.state);
-    let message: string | null = null;
-    if (next.selection) {
-      setLastSelection(next.selection);
-      message = `${mode.current.toUpperCase()}: ${next.selection.targetId} selected once (${next.selection.ordinal}).`;
-    } else if (next.state.capture && !before.capture) {
-      message = `${mode.current.toUpperCase()} DOWN: captured ${next.state.capture.targetId}.`;
-    } else if (next.state.epoch !== before.epoch) {
-      message = `Input cancelled / blocked: ${next.state.reason}.`;
-    } else if (next.state.phase === 'armed' && before.phase !== 'armed') {
-      message = mode.current === 'hardware' ? 'Hardware released and armed.' : 'Simulator released and armed. No hardware input is connected.';
-    }
-    if (detail) message = message ? `${message} ${detail}` : detail;
-    if (message) record(message);
-    return next;
-  }, [record]);
-
-  const cancelHeld = useCallback(() => {
-    heldInput.current = null;
-    if (mode.current === 'hardware') adapter.current?.stop('Input context changed');
-    else if (current.current.connected) dispatch({ type: 'fault' });
-  }, [dispatch]);
-
-  useEffect(() => {
-    const activity = () => {
-      const active = document.hasFocus() && document.visibilityState === 'visible';
-      if (!active) heldInput.current = null;
-      dispatch({ type: 'activity', active });
-    };
-    window.addEventListener('blur', activity);
-    window.addEventListener('focus', activity);
-    window.addEventListener('resize', cancelHeld);
-    document.addEventListener('visibilitychange', activity);
-    activity();
-    return () => {
-      adapter.current?.stop('Diagnostic unmounted');
-      window.removeEventListener('blur', activity);
-      window.removeEventListener('focus', activity);
-      window.removeEventListener('resize', cancelHeld);
-      document.removeEventListener('visibilitychange', activity);
-    };
-  }, [dispatch, cancelHeld]);
-
-  useEffect(() => {
-    if (state.phase !== 'armed') return;
-    const epoch = state.epoch;
-    const timer = window.setTimeout(() => dispatch({ type: 'tick', epoch }), scanIntervalMs);
-    return () => window.clearTimeout(timer);
-  }, [dispatch, state.phase, state.epoch, state.index]);
-
+  useLayoutEffect(() => { coordinator.current?.setView(inputView(model)); }, [model.uiRevision]);
   useLayoutEffect(() => {
-    if (focusAfterResume.current && state.connected && state.phase === 'armed') {
-      focusAfterResume.current = false;
-      switchButton.current?.focus();
+    if ((model.screen.name !== 'review' && model.screen.name !== 'reader') || !message.current || !model.review) return;
+    const pages = measureReviewPages(model.draft, message.current);
+    if (JSON.stringify(pages) !== JSON.stringify(model.review.pages)) {
+      commit({ ...current.current, uiRevision: current.current.uiRevision + 1, screen: { ...model.screen, page: 0 },
+        review: { revision: model.revision, pages, seen: [] } });
     }
-  }, [state.connected, state.phase, state.epoch]);
-
-  function resumeSimulation() {
-    if (adapter.current || connecting) return;
-    if (mode.current !== 'simulation') {
-      mode.current = 'simulation';
-      const initial = createSwitchState(view, crypto.randomUUID());
-      current.current = initial;
-      setState(initial);
-      setLastSelection(null);
+    message.current.scrollIntoView({ block: 'center', behavior: 'instant' });
+  }, [model.screen.name, model.screen.page, model.revision, model.settings.size]);
+  const target = input?.view?.targets[input.index];
+  const scanning = input?.phase === 'armed' && input.connected && input.active;
+  const held = input?.phase === 'held';
+  useLayoutEffect(() => {
+    if (!(scanning || held) || !target) return;
+    const element = buttons.current.get(target);
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      if (rect.top < 12 || rect.bottom > window.innerHeight - 12) element.scrollIntoView({ block: 'center', behavior: 'instant' });
     }
-    heldInput.current = null;
-    focusAfterResume.current = true;
-    dispatch({ type: 'activity', active: document.hasFocus() && document.visibilityState === 'visible' });
-    if (!current.current.connected) dispatch({ type: 'connect' });
-    // This explicit control synchronizes ONLY the local simulator. It never
-    // asserts that the Pico is released, connected, or ready.
-    dispatch({ type: 'sync', epoch: current.current.epoch, sequence: 0, pressed: false });
-  }
+  }, [target, scanning, held, model.uiRevision]);
 
-  function press(source: string) {
-    if (mode.current !== 'simulation') return;
-    if (heldInput.current || current.current.phase !== 'armed') return;
-    heldInput.current = source;
-    dispatch({ type: 'down', epoch: current.current.epoch, sequence: current.current.lastSequence! + 1 });
-  }
+  useEffect(() => {
+    if (!scanning || choices(current.current).filter(x => !x.disabled).length < 2) return;
+    const controller = coordinator.current, epoch = input!.epoch;
+    const delay = model.settings.pace * (input!.index === 0 ? 1.5 : 1);
+    const timer = setTimeout(() => { if (controller?.state.epoch === epoch) controller.tick(); }, delay);
+    return () => clearTimeout(timer);
+  }, [scanning, input?.epoch, input?.index, model.settings.pace]);
 
-  function release(source: string) {
-    if (mode.current !== 'simulation') return;
-    if (heldInput.current !== source) return;
-    heldInput.current = null;
-    const captured = current.current.capture;
-    if (!captured) return;
-    dispatch({ type: 'up', epoch: current.current.epoch, sequence: current.current.lastSequence! + 1,
-      downSequence: captured.downSequence });
-  }
+  useEffect(() => {
+    voiceUpdate.current?.();
+    if (model.screen.name !== 'review' || held || !message.current || !model.review) return;
+    const revision = model.revision, page = model.screen.page ?? 0, exactPage = model.review.pages[page];
+    const visible = () => {
+      if (!active() || coordinator.current?.state.phase === 'held') return;
+      const element = message.current;
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      if (rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth
+        && element.scrollHeight <= element.clientHeight + 1) commit(presented(current.current, revision, page, exactPage));
+    };
+    const observer = new IntersectionObserver(visible, { threshold: 1 }); observer.observe(message.current);
+    const frame = requestAnimationFrame(visible); window.addEventListener('focus', visible);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); window.removeEventListener('focus', visible); };
+  }, [model.screen.name, model.screen.page, model.revision, model.settings.size, model.review?.pages, held]);
 
-  async function connectPico() {
-    if (!serialAvailable || !verifiedPort || connecting || adapter.current) return;
-    heldInput.current = null;
-    dispatch({ type: 'disconnect' });
-    setConnecting(true);
-    setHardware('Choose the verified CDC2 data port');
-    let ended = false;
-    try {
-      const connection = await requestSerialAdapter(
-        (navigator as Navigator & { serial: SerialChooser }).serial,
-        async port => {
-          const info = port.getInfo();
-          // Web Serial exposes VID/PID, not interface number or OS device path.
-          // The operator verifies the chooser path against the OS USB ancestry.
-          return verifiedPort && info.usbVendorId === 0x239a && info.usbProductId === 0x80f4;
-        },
-        {
-          waitingForFocus: () => {
-            setHardware('Waiting for page focus — input blocked');
-            record('Picker returned before page focus; port remains unopened.');
-          },
-          epoch: instanceId => {
-            const priorCount = mode.current === 'hardware' ? current.current.selections : 0;
-            mode.current = 'hardware';
-            let fresh = createSwitchState(view, instanceId);
-            fresh = reduceSwitch(fresh, { type: 'activity', active: true }).state;
-            fresh = reduceSwitch(fresh, { type: 'connect' }).state;
-            // Preserve only the visible diagnostic count, never input state.
-            fresh = Object.freeze({ ...fresh, selections: priorCount });
-            current.current = fresh;
-            setState(fresh);
-            setLastSelection(null);
-            setHardware('Synchronizing — input blocked');
-            record(`New hardware session ${instanceId.slice(0, 8)}; awaiting fresh synchronization.`);
-            return fresh.epoch;
-          },
-          input: message => {
-            const detail = `V2 ${message.type.toUpperCase()} session=${message.epoch.slice(0, 8)} seq=${message.sequence} tick=${message.tick_ms}`
-              + (message.type === 'sync' ? ` pressed=${message.pressed}` : '')
-              + (message.type === 'up' ? ` downSequence=${message.downSequence}` : '');
-            const next = dispatch(message, detail);
-            if (next.state.epoch !== message.epoch) {
-              throw Error('Input kernel rejected message');
-            }
-            setHardware(message.type === 'sync' && message.pressed
-              ? 'Connected — release switch to arm' : 'Connected — protocol v2 verified');
-          },
-          cancelled: reason => {
-            ended = true;
-            setHardware(`Stopped: ${reason}. Reconnect explicitly to recover.`);
-            dispatch({ type: 'disconnect' }, `Transport stopped: ${reason}.`);
-          },
-        },
-      );
-      if (ended) await connection.closed;
-      else {
-        adapter.current = connection;
-        void connection.closed.then(() => {
-          if (adapter.current === connection) adapter.current = null;
-          record('Serial cleanup completed; next connection requires a new session.');
+  useEffect(() => {
+    const auth = model.authorization;
+    if (!auth) { speech.current?.cancel(); return; }
+    const controller = coordinator.current;
+    const start = () => {
+      const latest = current.current;
+      if (!active() || latest.authorization?.id !== auth.id || latest.screen.name !== 'speaking') return;
+      // The physical path needs a fresh, released Stop target before any audio.
+      if (controller?.mode !== 'none' && (controller?.state.phase !== 'armed' || controller?.state.view?.revision !== latest.uiRevision)) return;
+      const stopButton = buttons.current.get('stop');
+      if (!stopButton) return;
+      stopButton.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      const rect = stopButton.getBoundingClientRect();
+      if (rect.top < 0 || rect.bottom > window.innerHeight) return;
+      if (!speech.current) { commit(speechEvent(latest, auth.id, 'error')); return; }
+      speech.current.start(auth, () => active() && current.current.authorization?.id === auth.id
+        && current.current.revision === auth.revision, event => {
+          commit(speechEvent(current.current, auth.id, event)); record(`Speech ${event} · no message text logged`);
         });
+    };
+    startPending.current = start; start();
+    const timeout = setTimeout(() => {
+      if (current.current.authorization?.id === auth.id && current.current.speech === 'Preparing') {
+        speech.current?.cancel(); commit(speechEvent(current.current, auth.id, 'error'));
       }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : 'Serial error';
-      record(`Connection attempt failed: ${reason}.`);
-      setHardware(`Not connected: ${reason}`);
-    } finally { setConnecting(false); }
+    }, 8000);
+    return () => { clearTimeout(timeout); startPending.current = null; };
+  }, [model.authorization?.id]);
+  useEffect(() => { if (scanning) startPending.current?.(); }, [scanning, input?.epoch]);
+
+  function companion(id: string) {
+    const before = current.current;
+    coordinator.current?.stop('Companion controls — physical input paused', false);
+    simulationSource.current = null; speech.current?.cancel();
+    const next = choose(before, id, before.uiRevision);
+    if (next !== before) { setCounts(old => ({ ...old, companion: old.companion + 1 })); commit(next); }
   }
-
-  const scanning = state.phase === 'armed';
-  const held = state.phase === 'held';
-  const activeIndex = scanning || held ? state.index : -1;
-  return (
-    <main onPointerDownCapture={event => {
-      if (event.target !== switchButton.current) cancelHeld();
-    }} onKeyDownCapture={event => {
-      if (event.key === 'Tab' || event.target !== switchButton.current) cancelHeld();
-    }}>
-      <header>
-        <p className="brand">StillMyVoice</p>
-        <h1>Input diagnostic</h1>
-        <p>Temporary engineering screen · physical input and local simulation are labeled separately.</p>
-      </header>
-
-      <section className="connection" aria-label="Connection status">
-        <strong>Hardware: {hardware}</strong>
-        <span>{serialAvailable ? 'Web Serial is available in this browser.' : 'Web Serial is unavailable in this browser. Use Chrome for later hardware testing.'}</span>
-        <span>Choose Pico at /dev/cu.usbmodem103: OS-verified CDC2 data interface 3 for this attachment. Recheck the path after USB reconnection.</span>
-        <label><input type="checkbox" checked={verifiedPort} disabled={connecting || (mode.current === 'hardware' && state.connected)}
-          onChange={event => setVerifiedPort(event.target.checked)} /> I will select the verified CDC2 data port, not the console.</label>
-        <button type="button" disabled={!serialAvailable || !verifiedPort || connecting || (mode.current === 'hardware' && state.connected)} onClick={() => void connectPico()}>
-          {connecting ? 'Connecting…' : 'Connect Pico'}
-        </button>
-        <button type="button" disabled={mode.current !== 'hardware' || !state.connected} onClick={() => adapter.current?.stop('Explicit pause')}>Pause / disconnect Pico</button>
+  function simulationDown(source: string) {
+    if (simulationSource.current) return;
+    simulationSource.current = source; coordinator.current?.down();
+  }
+  function simulationUp(source: string) {
+    if (simulationSource.current !== source) return;
+    simulationSource.current = null; coordinator.current?.up();
+  }
+  const displayed = (model.screen.name === 'review' || model.screen.name === 'reader') && model.review
+    ? model.review.pages[model.screen.page ?? 0] : model.draft;
+  const list = choices(model);
+  return <main style={{ '--text-scale': model.settings.size / 100 } as CSSProperties}>
+    <header className="masthead"><div className="wordmark" aria-label="SMV — Still My Voice">SMV</div>
+      <div><p className="product-name">Still My Voice</p><p className="tagline">Communication, on your terms.</p></div>
+      <span className="prototype">Non-clinical prototype</span></header>
+    <div className="status-strip" aria-label="Input status"><span>{coordinator.current?.mode === 'simulation' ? 'Simulation' : coordinator.current?.mode === 'hardware' ? 'Physical switch' : 'Input paused'}</span>
+      <span>{held ? 'Held · release to choose' : scanning ? model.screen.name === 'paused' ? 'Ready to resume' : 'Scanning' : status}</span>
+      <span>{input?.pressed === null || !input ? 'Unknown / unarmed' : input.pressed ? 'Pressed' : 'Released'}</span></div>
+    <div className="communication-workspace">
+      <section className="message-panel" aria-labelledby="message-title">
+        <div className="panel-heading"><h1 id="message-title">Your message</h1><span className="provenance">{model.provenance}</span></div>
+        {(model.screen.name === 'review' || model.screen.name === 'reader') && model.review ?
+          <p className="page-label">Part {(model.screen.page ?? 0) + 1} of {model.review.pages.length} · Exact wording</p> : null}
+        <p ref={message} className={`message-text${model.draft ? '' : ' placeholder'}`} data-testid="message-text">{displayed || 'Your words will appear here.'}</p>
+        {model.repair ? <div className="correction"><p>Replacing: <strong>{model.draft.slice(model.repair.start, model.repair.end)}</strong></p>
+          <p>New wording: <span className="exact">{model.repair.buffer || '(nothing entered)'}</span></p><p>Only this occurrence changes when you choose Apply correction.</p></div> : null}
+        <p className="speech-state" aria-live="polite">{model.speech}</p>
+        {model.lastPlayed !== null && model.speech !== 'Playback finished' ? <p className="small">A previous message was played. Speaking again requires new approval.</p> : null}
+        <p className="small">Your draft stays in this tab’s memory. Reloading or closing the page clears it.</p>
+        {model.screen.name === 'review' ? <p className="small">Read every part, then make a separate selection on “Speak exactly this.” Playback completion does not confirm that someone heard it.</p> : null}
       </section>
-
-      <div className="workspace">
-        <section className="result" aria-label="Selection results">
-          <h2>Last {mode.current === 'hardware' ? 'physical' : 'simulated'} selection</h2>
-          <p className="chosen" aria-live="polite">{lastSelection?.targetId ?? 'No selection yet'}</p>
-          <dl>
-            <div><dt>Completed selections</dt><dd data-testid="selection-count">{state.selections}</dd></div>
-            <div><dt>Input</dt><dd>{state.pressed === null ? 'Unknown / unarmed' : state.pressed ? 'Pressed' : 'Released'}</dd></div>
-            <div><dt>Scanner</dt><dd>{held ? 'Held — release to choose' : scanning ? 'Scanning' : 'Paused / awaiting synchronization'}</dd></div>
-          </dl>
-          <p className="note">Input source: {mode.current}. No speech, AI, microphone, or gaze is active.</p>
-        </section>
-
-        <section aria-label="Three stable targets">
-          <h2>Scanning targets</h2>
-          <ol className="targets">
-            {targets.map((target, index) => (
-              <li key={target} data-scan={activeIndex === index} data-held={held && activeIndex === index}
-                data-selected={lastSelection?.targetId === target} aria-current={activeIndex === index ? 'true' : undefined}>
-                <strong>{target}</strong>
-                <span>{held && activeIndex === index ? 'Held · release to choose' : activeIndex === index ? 'Scan focus' : '\u00a0'}</span>
-                <span className="selection-mark">{lastSelection?.targetId === target ? '✓ Last selected' : '\u00a0'}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      </div>
-
-      <section className="simulation" aria-label="Simulation controls">
-        <h2>Local input simulation</h2>
-        <p>Start or resume, then hold and release the simulated switch. With that button focused, Space or Enter does the same. Focus loss cancels a pending selection.</p>
-        <div className="controls">
-          <button type="button" onClick={resumeSimulation} disabled={scanning || held || connecting || (mode.current === 'hardware' && state.connected)}>
-            {state.connected ? 'Resume simulation' : 'Start simulation'}
-          </button>
-          <button ref={switchButton} type="button" className="simulated-switch" disabled={!state.connected || mode.current !== 'simulation'}
-            aria-describedby="simulation-help"
-            onPointerDown={event => {
-              if (event.button !== 0) return;
-              event.currentTarget.focus();
-              event.currentTarget.setPointerCapture(event.pointerId);
-              press(`pointer:${event.pointerId}`);
-            }}
-            onPointerUp={event => release(`pointer:${event.pointerId}`)}
-            onPointerCancel={cancelHeld}
-            onLostPointerCapture={() => { if (heldInput.current?.startsWith('pointer:')) cancelHeld(); }}
-            onBlur={() => { if (heldInput.current) cancelHeld(); }}
-            onKeyDown={event => {
-              if (event.key !== ' ' && event.key !== 'Enter') return;
-              event.preventDefault();
-              if (!event.repeat) press(`key:${event.key}`);
-            }}
-            onKeyUp={event => {
-              if (event.key !== ' ' && event.key !== 'Enter') return;
-              event.preventDefault();
-              release(`key:${event.key}`);
-            }}>Simulated switch · hold, then release</button>
-          <button type="button" disabled={!state.connected || mode.current !== 'simulation'} onClick={() => {
-            heldInput.current = null;
-            dispatch({ type: 'disconnect' });
-          }}>Disconnect simulator</button>
-        </div>
-        <p id="simulation-help" className="note">A hold never repeats. The simulator does not operate the Pico or prove physical integration.</p>
+      <section className="interaction-panel" aria-labelledby="interaction-title">
+        <h2 id="interaction-title" aria-live="polite">{title(model)}</h2>
+        {model.notice ? <p className="notice" role="status">{model.notice}</p> : null}
+        <div className="choices">{list.map(option => {
+          const selected = (scanning || held) && target === option.id && input?.view?.revision === model.uiRevision;
+          return <div className="target-envelope" key={option.id} data-scan={selected} data-held={selected && held}>
+            <button ref={element => { if (element) buttons.current.set(option.id, element); else buttons.current.delete(option.id); }}
+              type="button" disabled={option.disabled} onClick={() => companion(option.id)}
+              onPointerDown={() => { if (coordinator.current?.state.phase === 'held') coordinator.current.stop('Companion pointer interrupted a hold', false); }}
+              onKeyDown={event => { if (event.key === 'Tab' && coordinator.current?.mode !== 'none') coordinator.current?.stop('Keyboard navigation — scan paused'); }}>
+              <span className="choice-label">{option.label}</span>{option.detail ? <span className="choice-detail">{option.detail}</span> : null}
+              <span className="scan-label" aria-hidden="true">{selected && held ? 'Release to choose' : selected ? 'Scan focus' : '\u00a0'}</span>
+            </button></div>;
+        })}</div>
       </section>
-
-      <details open>
-        <summary>Bounded event log ({log.length}/40)</summary>
-        <ol className="log">{log.map(entry => <li key={entry.id}>{entry.text}</li>)}</ol>
-      </details>
-    </main>
-  );
+    </div>
+    <details className="setup"><summary>Companion setup and input diagnostics</summary>
+      <p>Mouse and keyboard controls pause physical scanning. Browser port permission may require companion assistance.</p>
+      <p>{status} · {speech.current ? `${model.voices.length} browser voices discovered` : 'Browser speech unavailable'}</p>
+      <p>For this verified USB attachment: Pico /dev/cu.usbmodem103 is CDC2 data interface 3. Recheck OS interface ancestry after reattachment; the console port is not suitable.</p>
+      <label><input type="checkbox" checked={verified} disabled={coordinator.current?.mode === 'hardware' || coordinator.current?.busy} onChange={e => setVerified(e.target.checked)} /> I will choose the independently verified dedicated CDC2 data port.</label>
+      <div className="controls"><button type="button" disabled={!('serial' in navigator) || !verified || coordinator.current?.busy || coordinator.current?.mode === 'hardware'} onClick={() => {
+        const controller = coordinator.current;
+        if (!controller) return;
+        void controller.connect((navigator as Navigator & { serial: SerialChooser }).serial, async port => {
+          const info = port.getInfo(); return verified && info.usbVendorId === 0x239a && info.usbProductId === 0x80f4;
+        });
+      }}>Connect Pico</button>
+        <button type="button" onClick={() => coordinator.current?.stop('Explicit disconnect')}>Pause / disconnect Pico</button></div>
+      <h3>Local simulation — not hardware evidence</h3>
+      <div className="controls"><button type="button" disabled={coordinator.current?.mode === 'hardware' || coordinator.current?.busy} onClick={() => {
+        coordinator.current?.simulate(); simButton.current?.focus();
+      }}>Start simulation</button>
+        <button ref={simButton} type="button" disabled={coordinator.current?.mode !== 'simulation'}
+          onPointerDown={e => { if (e.button === 0) { e.currentTarget.setPointerCapture(e.pointerId); simulationDown(`pointer:${e.pointerId}`); } }}
+          onPointerUp={e => simulationUp(`pointer:${e.pointerId}`)} onPointerCancel={() => coordinator.current?.stop('Simulation pointer cancelled')}
+          onLostPointerCapture={() => { if (simulationSource.current) coordinator.current?.stop('Simulation capture lost'); }}
+          onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (!e.repeat) simulationDown(`key:${e.key}`); } }}
+          onKeyUp={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); simulationUp(`key:${e.key}`); } }}
+          onBlur={() => { if (simulationSource.current) coordinator.current?.stop('Simulation focus lost'); }}>Simulated switch · hold, then release</button></div>
+      <p>Accepted actions: physical {counts.hardware} · simulated {counts.simulation} · companion {counts.companion}</p>
+      <details><summary>Recent lifecycle events — no message text</summary><ol className="log">{log.map((entry, i) => <li key={i}>{entry}</li>)}</ol></details>
+    </details>
+    <footer>SMV · Still My Voice · Communication, on your terms.</footer>
+  </main>;
 }
