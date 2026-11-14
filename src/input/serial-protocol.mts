@@ -20,7 +20,16 @@ function parse(line: string): Message {
   const names = new Set<string>();
   for (const field of fields) {
     const match = /^\s*"([A-Za-z_]+)"\s*:\s*("[A-Za-z0-9:-]+"|0|[1-9][0-9]*|true|false)\s*$/.exec(field);
-    if (!match || names.has(match[1])) throw Error('Malformed or duplicate field');
+    if (!match) {
+      // Report schema metadata only, never raw bytes or arbitrary field content.
+      const name = /^\s*"([A-Za-z_]+)"\s*:/.exec(field)?.[1];
+      const known = ['v', 'type', 'epoch', 'sequence', 'tick_ms', 'pressed', 'downSequence', 'nonce'].includes(name ?? '') ? name : 'unknown';
+      const value = field.slice(field.indexOf(':') + 1).trim();
+      const shape = value === 'null' ? 'null' : /^-?\d+\.\d+(?:[eE][+-]?\d+)?$/.test(value) ? 'decimal number'
+        : /^-\d+$/.test(value) ? 'negative integer' : value.startsWith('"') ? 'invalid string' : 'invalid token';
+      throw Error(`Malformed field ${known}: ${shape}`);
+    }
+    if (names.has(match[1])) throw Error('Duplicate protocol field');
     names.add(match[1]);
   }
   const m = JSON.parse(line) as Record<string, unknown>;
@@ -44,6 +53,7 @@ export type SessionHooks = {
   send: (command: Command) => void;
   input: (message: InputMessage) => void;
   cancelled: (reason: string) => void;
+  diagnostic?: (detail: string) => void;
 };
 
 /** No selections or speech effects. Cancellation is synchronous and irreversible.
@@ -133,7 +143,11 @@ export class SerialSession {
   }
   private accept(m: Message, now: number) {
     if (!this.live(now)) return;
-    if (m.epoch !== this.epoch || m.type === 'fault') throw Error('Retired epoch or device fault');
+    if (m.epoch !== this.epoch || m.type !== 'pong') {
+      this.hooks.diagnostic?.(`RX ${m.type} · epoch ${m.epoch === this.epoch ? 'current' : 'retired'} · sequence ${m.sequence} · tick ${m.tick_ms} · phase ${this.phase}`);
+    }
+    if (m.epoch !== this.epoch) throw Error('Retired epoch received');
+    if (m.type === 'fault') throw Error('Device reported fault');
     if (this.phase === 'sync') {
       if (m.type !== 'sync' || m.sequence !== 0 || !this.challenge || this.challenge.nonce !== null) throw Error('Expected fresh state');
       this.sample = clockSample(this.challenge.sent, now, m.tick_ms);

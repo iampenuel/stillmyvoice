@@ -1,27 +1,41 @@
-# StillMyVoice
+# SMV — Still My Voice
 
-StillMyVoice (`stillmyvoice`) is a planned non-clinical communication-access prototype for an adult who understands written choices and can operate one physical switch. The intended journey is compose, inspect, correct, review, and deliberately approve the exact words to be spoken.
+**Communication, on your terms.** A non-clinical single-switch communication prototype. The journey is compose, inspect, correct, review, then separately approve the exact words for speech.
 
-## Current implementation status
+## Current status
 
-HP26-SW-01 now includes a React + TypeScript + Vite engineering diagnostic, three stable scanning targets, a deterministic input reducer, and focused tests. The browser currently accepts explicitly labeled local simulation only. Physical transport is gated on separate approval of the proposed Pico changes. Backend, AI, speech, gaze and listening are not implemented.
+The React + TypeScript + Vite workspace implements phrase categories, grouped spelling, occurrence-specific correction, Undo, deliberate clear, Pause/Resume, complete exact-text review, browser voice settings, fixed-sample preview, and stationary Stop. Drafts and authorizations stay in tab memory; reloading clears them.
 
-With the already-installed Node 24.22.1 selected for the current shell, use `npm run dev` for the localhost diagnostic, `npm test` for input tests, and `npm run build` for type checking and the small production bundle. Dependencies, build output and the existing local npm cache stay on the external drive. See [the implementation and firmware approval checkpoint](docs/HP26_SW_01.md) for observed tests and limits.
+The approved Pico v2 firmware and dedicated CDC2 Web Serial input passed SW-01 diagnostic acceptance. The owner has confirmed the first physical phrase-to-speech route: Review stayed silent, and a fresh physical Speak cycle audibly produced the exact phrase once. A later post-edit run stopped safely with an ambiguous retired-epoch/device-fault reason before audio; its cause remains unproven. Cleanup serialization, a disconnected settling interval and precise diagnostic reasons are implemented. Edited-message recovery still requires a physical repeat. See [the evidence and limitations](docs/HP26_SW_02A.md).
 
-The existing Pico diagnostic prints DOWN/UP and counts. Its live `code.py` matches the recovered original. All eight readable device files were copied and verified; the user explicitly excluded the unreadable macOS `.Trashes` entry. This is not a complete full-volume backup and is not a new physical test.
+The accepted input/firmware sources are unchanged. All readable original device files and subsequent approved snapshots remain preserved privately; `.Trashes` is the sole approved exclusion, so no complete full-volume backup is claimed. Do not write to CIRCUITPY or alter wiring for this task.
 
-## Coordination
+## Run locally
 
-- [Project state and evidence](docs/PROJECT_STATE.md)
-- [Protected input and speech-approval requirements](docs/INTERFACE_CONTRACT.md)
-- [UI/UX direction and pending decisions](docs/UI_SPEC.md)
-- [Approved UI architecture and provisional details](docs/UI_SPEC_V2_PROPOSAL.md)
-- [SW-01 implementation and firmware approval](docs/HP26_SW_01.md)
-- [Local skill registry](docs/SKILLS_REGISTRY.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
+Use the already-installed Node **24.22.1** and npm **11.19.1** for task commands, without changing the global default:
 
-React + TypeScript + Vite and explicit input state logic are implemented for this bounded diagnostic. Dedicated USB CDC + Web Serial remains the initial transport candidate; HID is a conditional fallback. The proposed firmware is not installed. The protected model gateway and browser speech are later work.
+```sh
+export PATH="/Users/admin/.nvm/versions/node/v24.22.1/bin:$PATH"
+cd '/Volumes/Penuel Back/Development/StillMyVoice'
+npm run dev
+npm test
+npm run typecheck
+npm run build
+```
 
-Use the existing nvm installation's Node 24.22.1 and npm 11.19.1 for task commands only, without changing the global default. A later scaffold must check its exact package engine requirements first.
+Keep dependencies and the project npm cache (`.local-cache/npm`) on the external drive. The browser app binds to `127.0.0.1:5173`. Chrome port permission and independently verifying the dedicated CDC2 interface can require companion assistance. Native mouse/keyboard actions are labeled separately from hardware input. Browser speech is available independently of cloud services; offline behavior is unverified.
 
-The next gate is explicit approval for the exact proposed `boot.py` and `code.py`, followed by transport implementation and real physical acceptance tests. Do not write to CIRCUITPY or treat simulation as hardware evidence.
+Isolated ElevenLabs/Gemini server work is in progress and not yet wired into the UI. Both credentials are present privately and Git-ignored; live requests remain disabled pending account protections. No real provider request or expense is claimed. Gemini is restricted to a confirmed no-billing free-tier project and fictional examples. See [provider setup and current integration limits](docs/PROVIDER_SETUP.md). Do not use real patient/caregiver content for free-tier demonstrations.
+
+## Project references
+
+- [Current project state](docs/PROJECT_STATE.md)
+- [Architecture and authority boundaries](docs/ARCHITECTURE.md)
+- [Protected input and speech-approval contract](docs/INTERFACE_CONTRACT.md)
+- [Approved UI direction](docs/UI_SPEC.md) and [detailed specification](docs/UI_SPEC_V2_PROPOSAL.md)
+- [Operator acceptance checklist](docs/OPERATOR_CHECKLIST.md)
+- [Firmware review, accepted hashes and rollback](docs/FIRMWARE_V2_REVIEW.md)
+- [Branding boundaries](docs/BRANDING.md): `stillmyvoice.club`, registered according to the owner, deployment unconfirmed; no production domain is configured.
+- [Third-party notices](THIRD_PARTY_NOTICES.md) and [local instruction registry](docs/SKILLS_REGISTRY.md)
+
+This prototype has no clinical validation or accessibility-conformance claim. It is not deployed or submitted. Optional transcription, premium voices, Gemini UI integration and release acceptance remain unfinished. A successful build or synthetic test is not evidence of real physical or audible success.

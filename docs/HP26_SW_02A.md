@@ -1,27 +1,43 @@
-# SW-02A communication workspace — implementation checkpoint
+# SW-02A — communication recovery checkpoint
 
-Status: **PARTIAL**, November 14, 2026. The master implementation directive authorizes SW-02A and the subsequent ordered milestones. This supersedes the historical SW-00/SW-01 stop gates, while preserving the accepted hardware and input boundaries.
+Status: **PARTIAL**, November 14, 2026. Recovery precedes UI refinement and subsequent gated milestones.
 
-Latest physical browser observation: four hardware selections traversed Compose → category → phrase → Review and retained `Please reposition me.`. Entering Review stopped with **Serial setup failed**, before speech. This run does not pass the communication acceptance gate. A deterministic regression reproduced two rapid view updates reopening the port while the previous close was still pending. A shared cleanup promise now serializes retirement; the regression passes. The accepted input/firmware files are unchanged. Repeat physical navigation and actual audible speech remain necessary.
+## Evidence and investigation
 
-Implemented: phrase categories; grouped alphabet, numbers and punctuation; character editing; occurrence-specific correction; staged deletion; Undo; intentional clear; Pause/Resume; exact full-message paging; separate frozen speech authorization; browser voice discovery, selection, rate, fixed-sample preview and stationary Stop. Drafts and approvals exist only in tab memory. Branding follows [the owner update](BRANDING.md).
+**Owner-confirmed:** exactly “Please reposition me.” was audible once, only after a NEW physical press/release on Speak; Review entry remained silent. Browser lifecycle evidence showed two completed playbacks, followed by an interruption after a later edit and fresh approval, before that attempted audio. The historical reason “Retired epoch or device fault” did not distinguish a stale frame from a firmware fault. The owner later refreshed deliberately; that was not a connection error. The original fault's cause remains unproven.
 
-The accepted four input modules and firmware sources remain unchanged. `communication/input-coordinator.mts` owns application navigation: it retires the previous view, awaits serial cleanup, and reopens the same independently verified port with a new unpredictable epoch and fresh state snapshot. It never uses port order, relabels buffered input, fabricates a physical release, or reconnects automatically after a genuine interruption. This adds a synchronization delay to each screen transition. Its usability and physical reliability need testing in this workspace, separately from the accepted diagnostic.
+The earlier Review failure (“Serial setup failed”) was independently reproduced as two rapid view updates reopening the port before cleanup completed. Commit d01ce3a serialized cleanup. The new safeguard keeps the closed port disconnected for 200 ms before a new session, giving the unchanged firmware loop time to observe DTR low and clear buffers. This mitigates a possible queue-retirement race; it is not physical proof of the historical cause. Rapid view changes share the close/settling barrier; genuine focus loss cancels deferred reopening.
 
-The communication model never plays audio. A valid action on Speak creates a unique immutable authorization with exact text, draft revision, voice, rate and provider. Browser speech consumes that authorization once. Stop, focus/visibility/input loss and errors retire it; late callbacks cannot affect a newer request. Speech starts only when the new stationary Stop view has synchronized and is released, or following an explicit companion approval with physical input disconnected. A voice engine's completion event does not prove audibility or comprehension.
+Host diagnostics now distinguish “Retired epoch received” from “Device reported fault” and retain bounded in-memory connection/view revisions, validated frame types, sequence/timestamp metadata and lifecycle events. No draft or raw unvalidated input is logged. Failures still cancel input and speech immediately. The primary UI points an unarmed user to companion setup without claiming switch-only recovery before synchronization.
 
-Review pages preserve the exact concatenated message. Pages are measured against the actual reading column and viewport. A page becomes reviewed only when its complete text is visibly rendered; changing pagination retires that gate. This records presentation, not that the person read or understood the words. Target changes always retire the old input context.
+Multiple SMV tabs existed earlier. Only one was open at this checkpoint; no competing serial session was observed, with one frontend and one API process. This does not establish or exclude historical contention. Fresh diagnostics are needed if the fault recurs; do not refresh a failed repeat before inspection.
+
+During the fresh browser connection check, the first attempt rejected a malformed field before any physical action. After cleanup, a second explicit connection received a valid current-epoch synchronization snapshot, sequence 0, released, and displayed Ready to resume. No restart or board write was needed. The earlier malformed frame was not retained; its contents and relationship to the historical fault are unknown. Future malformed diagnostics identify the field and value shape without logging raw content. This successful synchronization is observed transport evidence, not an edited-message physical pass.
+
+## Implementation and safety
+
+Phrase categories, grouped spelling, occurrence-specific correction, staged deletion, Undo, intentional clear, Pause/Resume, complete review paging, immutable separate authorization, browser voices/preview/rate and stationary Stop exist. Drafts and approvals stay in tab memory. Reducer, freshness calculations, wire format and firmware remain unchanged. Protocol/adapter edits add diagnostics and separate fatal reasons without relaxing validation.
+
+The coordinator retires each view and reopens the same independently verified port after cleanup/settling, with a fresh unpredictable epoch and snapshot. Genuine interruptions require explicit reconnection. No buffered input is relabeled, no release fabricated, and holds do not repeat.
+
+The model cannot play audio. Speak freezes exact text/revision/voice/rate/provider into a one-use authorization. The physical route waits for the new Stop view to be synchronized and released before audio. Stop, focus loss, transport errors and edits revoke approval. Late callbacks cannot replay speech. Entire review pages must be presented before Speak is enabled; presentation is not proof of reading.
 
 ## Executed verification
 
-- All 48 communication/input tests passed after the close-race and layout-recovery regressions. An additional 17 isolated provider/API/official-SDK tests passed (65 total); all external provider responses in those tests are synthetic. The loopback HTTP test required the execution permission for local port binding.
-- TypeScript checking and the production build passed after the viewport/pagination refinements.
-- Chrome companion controls: phrase selection → Review preserved `Please reposition me.`; status stayed Not spoken/Awaiting approval until a separate Speak action. The browser then reported Speaking and Playback finished. Actual audibility has **not** been confirmed by the owner.
-- Chrome initially exposed a visualViewport scrollbar feedback pause; the guard now compares actual window dimensions and zoom scale. Subsequent phrase/review navigation passed.
-- Live Pico hashes match accepted v2/boot hashes, OS ancestry still maps CDC2 interface 3 to the previously verified data path, and no competing serial session was observed before connection setup. No board file was written.
+- 72 Node tests passed, including synthetic provider/API/environment/SDK tests with no external provider calls.
+- Expanded navigation regression: phrase → review → fresh approval → playback-end event → occurrence-specific negation edit → review → a different fresh authorization. Exact edited text is preserved; stale playback callbacks cannot authorize it.
+- Cleanup, pressed reconnect, focus cancellation, strict epochs, timestamp wrap, malformed frames, matching edges and one-use speech regressions pass. TypeScript and production build pass.
+- Owner-confirmed basic-path audibility is distinct from observed browser start/end events.
+- Live approved v2/boot hashes matched; OS ancestry still identifies CDC2 data interface 3. No competing serial session was observed. No firmware, boot or wiring changes.
 
-## Pending owner checks and limits
+## Physical repeat — pending
 
-The first physical communication route has been requested: Phrases → Comfort → Please reposition me. → Review → a fresh Speak cycle, with audible exact wording confirmation. Then test spelling, correction, Undo, long-message paging, Stop during a longer utterance, input loss while preparing/speaking, held reconnect and fresh approval after recovery. No new workspace physical pass is claimed yet.
+Keep the intended SMV tab focused. Do not refresh on failure; logs are in-memory.
 
-UI polish and narrow/200%-text checks remain in progress. Single-switch operation requires browser permission setup assistance. Voice availability varies; offline playback has not been tested. The prototype has no clinical or accessibility-conformance validation. Cloud providers are not connected at this checkpoint; no provider credits have been consumed. There is no AI, microphone, gaze, automatic speech or production deployment.
+1. With the switch released, open Companion setup, check the verified dedicated-port box and Connect Pico using the independently verified CDC2 port. Confirm Released / Scanning. Use a fresh Resume cycle if shown.
+2. Using the switch: Phrases → Comfort → “Please reposition me.” → Review. Review stays silent. A NEW cycle on Speak exactly this must produce that exact sentence once.
+3. After playback: Edit wording → select “reposition”. Enter exactly “do not reposition” in the correction keyboard, using Space and editing for spaces. Navigation → Apply correction. The message must read exactly “Please do not reposition me.” This replaces only that word.
+4. Review stays silent again. A NEW Speak cycle must produce the exact edited sentence once, with no transport fault. Stop immediately on unintended selection/audio and report the visible recovery message.
+5. Separate follow-ups test Stop during a longer approved utterance, genuine focus loss and held disconnect/reconnect. Returning to chat intentionally loses focus; reconnect explicitly before the next test. Nothing may replay automatically.
+
+Full acceptance also needs long-message paging, Undo, deletion, voice preview, large text/narrow/200%-zoom checks and the broader operator checklist. Permission setup may require companion assistance. Offline audio and accessibility/clinical outcomes are not validated. Provider keys are private but account protections remain unconfirmed; live requests stay disabled. UI stabilization and optional gaze follow recovery.

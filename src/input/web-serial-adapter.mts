@@ -39,6 +39,7 @@ export type AdapterCallbacks = {
   input: (message: InputMessage) => void;
   cancelled: (reason: string) => void;
   waitingForFocus?: () => void;
+  diagnostic?: (detail: string) => void;
 };
 
 // Chrome's chooser can resolve before document focus is restored. This is a
@@ -120,6 +121,7 @@ export async function requestSerialAdapter(
       try { await port.setSignals({ dataTerminalReady: false }); } catch { /* detached */ }
       try { await port.close(); } catch { /* detached */ }
     }
+    callbacks.diagnostic?.('Port cleanup complete');
     finish();
   };
   const stop = (reason = 'Explicit disconnect') => {
@@ -155,8 +157,10 @@ export async function requestSerialAdapter(
   try {
     await port.open({ baudRate: 115200, bufferSize: 1024, flowControl: 'none' });
     opened = true;
+    callbacks.diagnostic?.('Port opened');
     if (stopped) { await cleanup(); return { stop, closed }; }
     await port.setSignals({ dataTerminalReady: true });
+    callbacks.diagnostic?.('DTR asserted; waiting before synchronization');
     await env.settle();
     if (stopped || !env.active()) {
       stop('Inactive during connection');
@@ -170,7 +174,7 @@ export async function requestSerialAdapter(
     const epoch = callbacks.epoch(instanceId);
     if (epoch !== instanceId && !epoch.startsWith(instanceId + ':')) throw Error('Epoch must retain fresh connection identity');
     session = new SerialSession(epoch, {
-      now: env.now, nonce: env.nonce, send, cancelled: stop,
+      now: env.now, nonce: env.nonce, send, cancelled: stop, diagnostic: callbacks.diagnostic,
       input: message => {
         if (!env.active()) stop('Inactive at input delivery');
         else if (!stopped) callbacks.input(message);

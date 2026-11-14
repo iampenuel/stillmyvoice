@@ -6,7 +6,9 @@ November 14, 2026 checkpoint: [UI specification v2](UI_SPEC_V2_PROPOSAL.md) reco
 
 ## Locked direction
 
-Branding update: use **SMV**, **Still My Voice**, and **Communication, on your terms.** The preferred domain is **stillmyvoice.ai**, with ownership and registration unverified; see [branding boundaries](BRANDING.md). Do not configure production origins from this preference.
+Branding update: use **SMV**, **Still My Voice**, and **Communication, on your terms.** The intended domain is **stillmyvoice.club**, registered according to the owner; deployment is unconfirmed. See [branding boundaries](BRANDING.md). Do not configure production origins from this statement.
+
+Owner-approved November 14 refinement, after the recovery checkpoint: a stable desktop workspace with aligned, equally tall message and navigation panel boundaries, slightly wider and visually dominant exact-message panel, and scrolling confined to the right options region during normal desktop scanning. At narrow widths, large text and 200% zoom, permit document scrolling and one-column reflow. Preserve visible captured targets, complete review, fresh speech approval and stationary Stop. Technical diagnostics belong in Companion setup. Cloud work follows recovery and UI acceptance; optional gaze-assisted scanning is a separate later experiment and never authorizes a selection or speech.
 
 StillMyVoice is an original adult communication workspace. Borrow principles: OpenAI's direct task access and restrained chrome; Apple's hierarchy, continuity, agency, feedback, and recovery; Uber's labeled controls, legibility, spacing consistency, and operational clarity. Do not copy logos, proprietary font files, brand assets, or complete layouts. A system font is acceptable.
 

@@ -37,6 +37,12 @@ export function initialModel(session: string): Model {
     lastPlayed: null, serial: 0, session, voices: [],
     settings: { pace: 1600, size: 100, voice: '', rate: 1, provider: 'browser' } };
 }
+/** The exact enabled targets rendered by the UI, with its requested starting target. */
+export function inputView(model: Model) {
+  const targets = choices(model).filter(x => !x.disabled).map(x => x.id);
+  const start = model.focusId ? Math.max(0, targets.indexOf(model.focusId)) : 0;
+  return { id: model.screen.name, revision: model.uiRevision, targets: [...targets.slice(start), ...targets.slice(0, start)] };
+}
 export function words(text: string) {
   return [...text.matchAll(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)]
     .map(m => ({ text: m[0], start: m.index, end: m.index + m[0].length }));

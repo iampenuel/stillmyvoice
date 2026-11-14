@@ -3,6 +3,6 @@
 - Primary wordmark: **SMV**
 - Full name: **Still My Voice**
 - Tagline: **Communication, on your terms.**
-- Preferred intended domain: **stillmyvoice.ai**
+- Intended domain: **stillmyvoice.club** — registration reported by the owner
 
-The owner replaced the previous `.com` candidate with `.ai`. Registration and ownership are unverified. This is a branding preference, not a live website or deployment claim. No domain purchase, DNS change, canonical URL, authentication origin, API endpoint, or application route is authorized by this preference. Production registration and deployment remain separate owner decisions.
+The November 14 supplemental directive supersedes the earlier `.com` and `.ai` candidates. The owner reports `.club` registered; deployment is unconfirmed. No DNS change, deployment, canonical URL, authentication origin, API endpoint, or application route is authorized by this branding update. Production configuration and public release remain separate owner decisions.

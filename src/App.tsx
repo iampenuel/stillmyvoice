@@ -1,17 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { choices, choose, initialModel, interrupt, presented, speechEvent, title, type Model } from './communication/model.mts';
+import { choices, choose, initialModel, inputView, interrupt, presented, speechEvent, title, type Model } from './communication/model.mts';
 import { InputCoordinator } from './communication/input-coordinator.mts';
 import { browserSpeechEngine, SpeechController } from './communication/speech.mts';
 import { measureReviewPages } from './communication/review-layout.mts';
+import { recoveryMessage } from './communication/recovery.mts';
 import type { SerialChooser } from './input/web-serial-adapter.mts';
 import type { SwitchState } from './input/switch-machine.mts';
 
 const active = () => document.hasFocus() && document.visibilityState === 'visible';
-function inputView(model: Model) {
-  const targets = choices(model).filter(x => !x.disabled).map(x => x.id);
-  const start = model.focusId ? Math.max(0, targets.indexOf(model.focusId)) : 0;
-  return { id: model.screen.name, revision: model.uiRevision, targets: [...targets.slice(start), ...targets.slice(0, start)] };
-}
 export function App() {
   const [model, render] = useState(() => initialModel(crypto.randomUUID()));
   const current = useRef(model);
@@ -25,11 +21,12 @@ export function App() {
   const message = useRef<HTMLParagraphElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const simButton = useRef<HTMLButtonElement>(null);
+  const setup = useRef<HTMLDetailsElement>(null);
   const simulationSource = useRef<string | null>(null);
   const voiceUpdate = useRef<(() => void) | null>(null);
   const startPending = useRef<(() => void) | null>(null);
   const commit = (next: Model) => { current.current = next; render(next); };
-  const record = (entry: string) => setLog(old => [...old.slice(-29), `${Math.round(performance.now())} ms · ${entry}`]);
+  const record = (entry: string) => setLog(old => [...old.slice(-239), `${Math.round(performance.now())} ms · ${entry}`]);
   const cancel = (reason: string) => {
     speech.current?.cancel(); simulationSource.current = null;
     commit(interrupt(current.current, reason)); record(reason);
@@ -45,10 +42,11 @@ export function App() {
         if (next === before) return;
         if (!next.authorization) speech.current?.cancel();
         setCounts(old => ({ ...old, [source]: old[source] + 1 }));
-        record(`${source} selection accepted · ${selection.viewId} · ${selection.ordinal}`);
+        record(`${source} selection accepted · ${selection.viewId}:${selection.revision} · cycle ${selection.ordinal}`);
         commit(next);
       },
       interrupted: reason => cancel(reason),
+      diagnostic: record,
     });
     coordinator.current = controller;
     const synth = window.speechSynthesis;
@@ -190,6 +188,7 @@ export function App() {
   const displayed = (model.screen.name === 'review' || model.screen.name === 'reader') && model.review
     ? model.review.pages[model.screen.page ?? 0] : model.draft;
   const list = choices(model);
+  const recovery = recoveryMessage(status, !!input?.connected, !!coordinator.current?.busy, input?.phase);
   return <main style={{ '--text-scale': model.settings.size / 100 } as CSSProperties}
     onPointerDownCapture={event => {
       if (event.target !== simButton.current && coordinator.current?.mode !== 'none') {
@@ -207,8 +206,8 @@ export function App() {
       <div><p className="product-name">Still My Voice</p><p className="tagline">Communication, on your terms.</p></div>
       <span className="prototype">Non-clinical prototype</span></header>
     <div className="status-strip" aria-label="Input status"><span>{coordinator.current?.mode === 'simulation' ? 'Simulation' : coordinator.current?.mode === 'hardware' ? 'Physical switch' : 'Input paused'}</span>
-      <span>{held ? 'Held · release to choose' : scanning ? model.screen.name === 'paused' ? 'Ready to resume' : 'Scanning' : status}</span>
-      <span>{input?.pressed === null || !input ? 'Unknown / unarmed' : input.pressed ? 'Pressed' : 'Released'}</span></div>
+      <span>{held ? 'Held · release to choose' : scanning ? model.screen.name === 'paused' ? 'Ready to resume' : 'Scanning' : recovery.label}</span>
+      <span>{input?.pressed === null || !input ? 'Awaiting synchronization' : input.pressed ? 'Pressed' : 'Released'}</span></div>
     <div className="communication-workspace">
       <section className="message-panel" aria-labelledby="message-title">
         <div className="panel-heading"><h1 id="message-title">Your message</h1><span className="provenance">{model.provenance}</span></div>
@@ -223,8 +222,10 @@ export function App() {
         {model.screen.name === 'review' ? <p className="small">Read every part, then make a separate selection on “Speak exactly this.” Playback completion does not confirm that someone heard it.</p> : null}
       </section>
       <section className="interaction-panel" aria-labelledby="interaction-title">
-        <h2 id="interaction-title" aria-live="polite">{title(model)}</h2>
-        {model.notice ? <p className="notice" role="status">{model.notice}</p> : null}
+        <h2 id="interaction-title" aria-live="polite">{model.screen.name === 'paused' ? 'Communication paused' : title(model)}</h2>
+        {model.screen.name === 'paused' && !scanning ? <div className="notice" role="status"><p>{recovery.guidance}</p>
+          <button type="button" onClick={() => { if (setup.current) { setup.current.open = true; setup.current.scrollIntoView({ block: 'nearest', behavior: 'instant' }); } }}>Open Companion setup</button></div>
+          : model.notice && model.screen.name !== 'paused' ? <p className="notice" role="status">{model.notice}</p> : null}
         <div className="choices">{list.map(option => {
           const selected = (scanning || held) && target === option.id && input?.view?.revision === model.uiRevision;
           return <div className="target-envelope" key={option.id} data-scan={selected} data-held={selected && held}>
@@ -232,13 +233,13 @@ export function App() {
               type="button" disabled={option.disabled} onClick={() => companion(option.id)}
               onPointerDown={() => { if (coordinator.current?.state.phase === 'held') coordinator.current.stop('Companion pointer interrupted a hold', false); }}
               onKeyDown={event => { if (event.key === 'Tab' && coordinator.current?.mode !== 'none') coordinator.current?.stop('Keyboard navigation — scan paused'); }}>
-              <span className="choice-label">{option.label}</span>{option.detail ? <span className="choice-detail">{option.detail}</span> : null}
+              <span className="choice-label">{option.id === 'resume' && !scanning ? 'Return to message' : option.label}</span>{option.id === 'resume' && !scanning ? <span className="choice-detail">Companion control. This does not reconnect the switch.</span> : option.detail ? <span className="choice-detail">{option.detail}</span> : null}
               <span className="scan-label" aria-hidden="true">{selected && held ? 'Release to choose' : selected ? 'Scan focus' : '\u00a0'}</span>
             </button></div>;
         })}</div>
       </section>
     </div>
-    <details className="setup"><summary>Companion setup and input diagnostics</summary>
+    <details ref={setup} className="setup"><summary>Companion setup and input diagnostics</summary>
       <p>Mouse and keyboard controls pause physical scanning. Browser port permission may require companion assistance.</p>
       <p>{status} · {speech.current ? `${model.voices.length} browser voices discovered` : 'Browser speech unavailable'}</p>
       <p>For this verified USB attachment: Pico /dev/cu.usbmodem103 is CDC2 data interface 3. Recheck OS interface ancestry after reattachment; the console port is not suitable.</p>

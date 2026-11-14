@@ -24,13 +24,19 @@ export class InputCoordinator {
   private readonly factory: Factory;
   private readonly active: () => boolean;
   private readonly nonce: () => string;
+  private readonly disconnectedSettle: () => Promise<void>;
+  private readonly diagnostic: (detail: string) => void;
   constructor(view: View, callbacks: {
     changed: (state: SwitchState, status: string) => void;
     selected: (selection: Selection, source: 'hardware' | 'simulation') => void;
     interrupted: (reason: string) => void;
-  }, factory: Factory = requestSerialAdapter, active = () => document.hasFocus() && document.visibilityState === 'visible', nonce: () => string = () => crypto.randomUUID()) {
+    diagnostic?: (detail: string) => void;
+  }, factory: Factory = requestSerialAdapter, active = () => document.hasFocus() && document.visibilityState === 'visible', nonce: () => string = () => crypto.randomUUID(),
+  disconnectedSettle: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 200))) {
     this.view = view; this.changed = callbacks.changed; this.selected = callbacks.selected;
     this.interrupted = callbacks.interrupted; this.factory = factory; this.active = active; this.nonce = nonce;
+    this.disconnectedSettle = disconnectedSettle;
+    this.diagnostic = callbacks.diagnostic ?? (() => {});
     this.state = createSwitchState(view, nonce());
   }
   private publish() { this.changed(this.state, this.status); }
@@ -59,12 +65,17 @@ export class InputCoordinator {
       if (flight) {
         try { const pending = await flight; pending.stop('View retired'); await pending.closed; } catch { /* failed open already cleaned */ }
       }
+      // The firmware clears retired queues when it observes DTR low. Port.close
+      // returning is a host-driver event, not evidence that its loop saw that edge.
+      // Keep DTR low between views; never drain, relabel or accept retired frames.
+      if (connection || flight) await this.disconnectedSettle();
     })();
     await this.closing;
   }
   stop(reason: string, notify = true) {
     this.generation++; this.mode = 'none'; this.busy = false; this.held = false;
     this.status = reason; this.dispatch({ type: 'disconnect' });
+    this.diagnostic(`Cancelled · ${reason}`);
     void this.retire();
     if (notify) this.interrupted(reason);
   }
@@ -88,8 +99,11 @@ export class InputCoordinator {
   private async open(port: DataPort, generation: number) {
     if (generation !== this.generation) return;
     this.busy = true; this.status = 'Synchronizing — input blocked'; this.publish();
+    const context = `connection ${generation} · ${this.view.id}:${this.view.revision}`;
+    this.diagnostic(`Opening ${context}`);
     const flight = this.factory({ requestPort: async () => port }, async candidate => candidate === port && generation === this.generation, {
       waitingForFocus: () => { if (generation === this.generation) { this.status = 'Waiting for page focus — input blocked'; this.publish(); } },
+      diagnostic: detail => this.diagnostic(`${context} · ${detail}`),
       epoch: instance => {
         if (generation !== this.generation || !this.active()) throw Error('Retired connection');
         return this.fresh(instance);
@@ -114,6 +128,7 @@ export class InputCoordinator {
   setView(view: View) {
     if (this.view.id === view.id && this.view.revision === view.revision && this.view.targets.join('\0') === view.targets.join('\0')) return;
     this.view = view;
+    this.diagnostic(`View ${view.id}:${view.revision} · targets ${view.targets.length}`);
     const mode = this.mode, generation = ++this.generation;
     this.dispatch({ type: 'view', view });
     if (mode === 'simulation') {
