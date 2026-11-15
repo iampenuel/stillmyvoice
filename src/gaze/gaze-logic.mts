@@ -1,0 +1,241 @@
+/** Diagnostic proposals only. This module has no DOM, camera, input or speech authority. */
+export type GazePoint = Readonly<{ x: number; y: number }>;
+export type GazeViewport = Readonly<{ key: string; width: number; height: number }>;
+export type GazeRegion = Readonly<{ id: string; left: number; top: number; width: number; height: number }>;
+export type GazeLayout = Readonly<{ viewport: GazeViewport; regions: readonly GazeRegion[] }>;
+export type GazeSample = Readonly<GazePoint & { capturedAt: number; faceDetected: boolean }>;
+export type GazeStatus = 'disabled' | 'uncertain' | 'tracking' | 'lost' | 'calibration-required';
+export type GazeReason = 'disabled' | 'collecting' | 'stable' | 'no-prediction' | 'missing-face' | 'stale' | 'invalid-prediction' | 'outside-regions' | 'oscillating' | 'dispersed' | 'layout-changed' | 'viewport-changed' | 'invalid-layout' | 'non-monotonic';
+export type GazeSnapshot = Readonly<{
+  status: GazeStatus; reason: GazeReason; regionId: string | null; point: GazePoint | null;
+  sampleCount: number; dispersionPx: number | null; ageMs: number | null; sampleAtMs: number | null; validUntilMs: number | null;
+  observedForMs: number; stableSinceMs: number | null; stabilizationMs: number | null;
+  calibrationRequired: boolean;
+}>;
+export type GazeStabilityConfig = Readonly<{
+  stableMs: number; windowMs: number; staleMs: number; minSamples: number;
+  dispersionPx: number; switchHysteresisMs: number; maxSamples: number;
+}>;
+/** Engineering defaults, not a confidence score or clinically validated thresholds. */
+export const defaultGazeStability: GazeStabilityConfig = Object.freeze({
+  stableMs: 600, windowMs: 1200, staleMs: 350, minSamples: 5,
+  dispersionPx: 80, switchHysteresisMs: 800, maxSamples: 32,
+});
+const finite = (n: number) => Number.isFinite(n);
+const time = (n: number) => finite(n) && n >= 0;
+const viewportValid = (v: GazeViewport) => typeof v.key === 'string' && !!v.key && finite(v.width) && finite(v.height) && v.width > 0 && v.height > 0;
+const viewportMatches = (a: GazeViewport, b: GazeViewport) => a.key === b.key && a.width === b.width && a.height === b.height;
+function regionsValid(regions: readonly GazeRegion[]): boolean {
+  return (regions.length === 2 || regions.length === 3) && new Set(regions.map(r => r.id)).size === regions.length
+    && regions.every(r => typeof r.id === 'string' && r.id.trim().length > 0 && r.id.length <= 64
+      && [r.left,r.top,r.width,r.height].every(finite) && r.width > 0 && r.height > 0);
+}
+/** Overlapping rectangles abstain; a point on a shared edge belongs to only one side. */
+export function regionAtPoint(point: GazePoint, layout: GazeLayout): string | null {
+  if (!viewportValid(layout.viewport) || !regionsValid(layout.regions) || !finite(point.x) || !finite(point.y)
+    || point.x < 0 || point.y < 0 || point.x >= layout.viewport.width || point.y >= layout.viewport.height) return null;
+  const matches = layout.regions.filter(r => point.x >= r.left && point.x < r.left+r.width && point.y >= r.top && point.y < r.top+r.height);
+  return matches.length === 1 ? matches[0].id : null;
+}
+function configFor(options: Partial<GazeStabilityConfig>): GazeStabilityConfig {
+  const c = { ...defaultGazeStability, ...options };
+  if (!Object.values(c).every(finite) || c.stableMs < 500 || c.switchHysteresisMs < c.stableMs
+    || c.windowMs < c.switchHysteresisMs || c.staleMs <= 0 || c.staleMs > c.windowMs || c.dispersionPx <= 0
+    || !Number.isInteger(c.minSamples) || c.minSamples < 3 || !Number.isInteger(c.maxSamples) || c.maxSamples < c.minSamples || c.maxSamples > 128) {
+    throw Error('Invalid gaze stability parameters');
+  }
+  return Object.freeze(c);
+}
+
+export class GazeStability {
+  readonly config: GazeStabilityConfig;
+  private enabled = false;
+  private calibration: GazeViewport | null = null;
+  private calibrationRequired = false;
+  private layoutKey: string | null = null;
+  private layoutChangedAt = 0;
+  private history: GazeSample[] = [];
+  private candidate: string | null = null;
+  private candidateSince: number | null = null;
+  private previousStable: string | null = null;
+  private stableSince: number | null = null;
+  private stabilizedIn: number | null = null;
+  private lastValidAt: number | null = null;
+  private lastObservationAt: number | null = null;
+  private status: GazeStatus = 'disabled';
+  private reason: GazeReason = 'disabled';
+  constructor(options: Partial<GazeStabilityConfig> = {}) { this.config = configFor(options); }
+  /** Call only after the user opted in AND the actual tracker successfully calibrated. */
+  enable(viewport: GazeViewport): void {
+    if (!viewportValid(viewport)) throw Error('Valid calibration viewport required');
+    this.enabled = true; this.calibration = { ...viewport }; this.calibrationRequired = false;
+    this.layoutKey = null; this.layoutChangedAt = 0; this.lastValidAt = null; this.lastObservationAt = null;
+    this.clear('uncertain', 'collecting');
+  }
+  disable(): void {
+    this.enabled = false; this.calibration = null; this.calibrationRequired = false;
+    this.layoutKey = null; this.lastValidAt = null; this.lastObservationAt = null;
+    this.clear('disabled', 'disabled');
+  }
+  /** Clear measurement history without claiming to recalibrate the actual tracker. */
+  reset(now = 0): void {
+    if (!time(now)) throw Error('Valid measurement reset time required');
+    this.layoutChangedAt = now;
+    this.lastValidAt = null; this.lastObservationAt = null;
+    this.clear(this.enabled ? this.calibrationRequired ? 'calibration-required' : 'uncertain' : 'disabled',
+      this.enabled ? this.calibrationRequired ? 'viewport-changed' : 'collecting' : 'disabled');
+  }
+  private clear(status: GazeStatus, reason: GazeReason, forgetPreference = true) {
+    this.history = []; this.candidate = null; this.candidateSince = null; this.stableSince = null; this.stabilizedIn = null;
+    if (forgetPreference) this.previousStable = null;
+    this.status = status; this.reason = reason;
+  }
+  observe(sample: GazeSample | null, now: number, layout: GazeLayout): GazeSnapshot {
+    if (!this.enabled) return this.snapshot(now);
+    if (!time(now)) { this.clear('lost','invalid-prediction'); return this.snapshot(0); }
+    if (!viewportValid(layout.viewport) || !this.calibration || !viewportMatches(this.calibration,layout.viewport)) {
+      this.calibrationRequired = true; this.clear('calibration-required','viewport-changed'); return this.snapshot(now);
+    }
+    // A changed viewport remains invalid even if it later returns to the old size.
+    if (this.calibrationRequired) return this.snapshot(now);
+    if (!regionsValid(layout.regions)) { this.clear('uncertain','invalid-layout'); return this.snapshot(now); }
+    const layoutKey = JSON.stringify(layout.regions);
+    if (this.layoutKey !== null && this.layoutKey !== layoutKey) {
+      this.layoutKey = layoutKey; this.layoutChangedAt = now;
+      this.clear('uncertain','layout-changed'); return this.snapshot(now);
+    }
+    this.layoutKey = layoutKey;
+    if (!sample) { this.clear('lost','no-prediction'); return this.snapshot(now); }
+    if (sample.faceDetected !== true) { this.clear('lost','missing-face'); return this.snapshot(now); }
+    if (![sample.x,sample.y].every(finite) || !time(sample.capturedAt) || sample.capturedAt > now
+      || sample.x < 0 || sample.y < 0 || sample.x >= layout.viewport.width || sample.y >= layout.viewport.height) {
+      this.clear('lost','invalid-prediction'); return this.snapshot(now);
+    }
+    if (now-sample.capturedAt > this.config.staleMs || sample.capturedAt < this.layoutChangedAt) {
+      this.clear('lost','stale'); return this.snapshot(now);
+    }
+    if (this.lastObservationAt !== null && sample.capturedAt <= this.lastObservationAt) {
+      this.clear('lost','non-monotonic'); return this.snapshot(now);
+    }
+    this.lastObservationAt = sample.capturedAt;
+    if (this.lastValidAt !== null && sample.capturedAt-this.lastValidAt > this.config.staleMs) this.clear('uncertain','collecting');
+    this.lastValidAt = sample.capturedAt;
+    const region = regionAtPoint(sample,layout);
+    if (!region) { this.clear('uncertain','outside-regions'); return this.snapshot(now); }
+    const changed = this.candidate !== null && this.candidate !== region;
+    if (this.candidate !== region) {
+      this.clear('uncertain',changed ? 'oscillating' : 'collecting',false);
+      this.candidate = region; this.candidateSince = sample.capturedAt;
+    }
+    this.history.push({ ...sample });
+    this.history = this.history.filter(p => sample.capturedAt-p.capturedAt <= this.config.windowMs).slice(-this.config.maxSamples);
+    const { dispersion } = this.measure();
+    const duration = sample.capturedAt-this.candidateSince!;
+    const needed = this.previousStable !== null && this.previousStable !== region ? this.config.switchHysteresisMs : this.config.stableMs;
+    if (dispersion > this.config.dispersionPx) {
+      this.status = 'uncertain'; this.reason = 'dispersed'; this.stableSince = null; this.stabilizedIn = null;
+    } else if (duration >= needed && sample.capturedAt-this.history[0].capturedAt >= needed && this.history.length >= this.config.minSamples) {
+      this.status = 'tracking'; this.reason = 'stable';
+      if (this.stableSince === null) { this.stableSince = sample.capturedAt; this.stabilizedIn = duration; }
+      this.previousStable = region;
+    } else { this.status = 'uncertain'; if (!changed) this.reason = 'collecting'; }
+    return this.snapshot(now);
+  }
+  private measure(): { point: GazePoint | null; dispersion: number } {
+    if (!this.history.length) return { point:null,dispersion:0 };
+    const point = { x:this.history.reduce((n,p)=>n+p.x,0)/this.history.length, y:this.history.reduce((n,p)=>n+p.y,0)/this.history.length };
+    return { point, dispersion:Math.max(...this.history.map(p=>Math.hypot(p.x-point.x,p.y-point.y))) };
+  }
+  /** Poll between inference calls: old coordinates immediately stop proposing a region. */
+  snapshot(now: number): GazeSnapshot {
+    if (this.enabled && !this.calibrationRequired && this.lastValidAt !== null) {
+      if (!time(now) || now<this.lastValidAt || now-this.lastValidAt > this.config.windowMs) this.clear('lost','stale');
+      else if (now-this.lastValidAt > this.config.staleMs) {
+        // A pending inference can contain a fresh, timestamp-contiguous camera
+        // frame. Expire the proposal NOW, but do not let polling frequency erase
+        // that bounded sample history. observe() still clears it when the actual
+        // capture gap is too large, and null/invalid frames clear it immediately.
+        this.status='lost'; this.reason='stale'; this.stableSince=null; this.stabilizedIn=null;
+      }
+    }
+    const { point,dispersion } = this.measure();
+    return Object.freeze({ status:this.status,reason:this.reason,regionId:this.status==='tracking' ? this.candidate : null,
+      point:this.status==='lost' ? null : point, sampleCount:this.history.length,dispersionPx:this.history.length ? dispersion : null,
+      ageMs:this.lastValidAt !== null && time(now) ? Math.max(0,now-this.lastValidAt) : null,sampleAtMs:this.lastValidAt,validUntilMs:this.lastValidAt===null ? null : this.lastValidAt+this.config.staleMs,
+      observedForMs:this.candidateSince !== null && this.lastValidAt !== null ? this.lastValidAt-this.candidateSince : 0,
+      stableSinceMs:this.stableSince,stabilizationMs:this.stabilizedIn,calibrationRequired:this.calibrationRequired });
+  }
+}
+
+export const GAZE_TRIAL_COUNT = 30;
+export const GAZE_DIAGNOSTIC_TRIAL_COUNT = 6;
+export type GazeTrialCount = 6 | 30;
+/** Balanced counts, then Fisher-Yates shuffle; six trials are diagnostic only. */
+export function balancedTrialPlan(regionIds: readonly string[], count: GazeTrialCount = 30, random: () => number = Math.random): readonly string[] {
+  if (count!==6 && count!==30) throw Error('Use six diagnostic or thirty acceptance trials');
+  if ((regionIds.length !== 2 && regionIds.length !== 3) || new Set(regionIds).size !== regionIds.length || regionIds.some(id=>!id.trim())) {
+    throw Error('Use two or three distinct broad regions');
+  }
+  const plan = Array.from({length:count},(_,i)=>regionIds[i%regionIds.length]);
+  for (let i=plan.length-1;i>0;i--) {
+    const draw = random(); if (!finite(draw) || draw<0 || draw>=1) throw Error('Random source must return a value in [0,1)');
+    const j=Math.floor(draw*(i+1)); [plan[i],plan[j]]=[plan[j],plan[i]];
+  }
+  return Object.freeze(plan);
+}
+/** Original acceptance-plan API remains fixed at thirty trials. */
+export function balanced30TrialPlan(regionIds: readonly string[], random: () => number = Math.random): readonly string[] {
+  return balancedTrialPlan(regionIds,30,random);
+}
+export type GazeTrialResult = Readonly<{
+  trial: number; promptedRegion: string; predictedRegion: string | null; outcome: 'correct' | 'incorrect' | 'abstained';
+  trackingLossEvents: number; stabilizationMs: number | null; startedAt: number; endedAt: number;
+}>;
+export type GazeTrialSummary = Readonly<{
+  denominator: GazeTrialCount; completed: number; pending: number; correct: number; incorrect: number; abstained: number;
+  correctFraction: number; trackingLossEvents: number; pilotGoalMet: boolean;
+}>;
+export class GazeTrialRun {
+  readonly plan: readonly string[];
+  readonly count: GazeTrialCount;
+  private results: GazeTrialResult[] = [];
+  private current: { startedAt: number; predictedRegion: string | null; stabilizationMs: number | null; trackingLossEvents: number; wasLost: boolean; lastObservedAt: number } | null = null;
+  constructor(regionIds: readonly string[], random: () => number = Math.random, count: GazeTrialCount = 30) {
+    this.plan=balancedTrialPlan(regionIds,count,random); this.count=count;
+  }
+  /** Reset GazeStability history at each prompt; never reuse the preceding trial's fixation. */
+  begin(now: number): Readonly<{ trial:number; promptedRegion:string; startedAt:number }> {
+    if (!time(now) || this.current || this.results.length>=this.count || (this.results.length && now<this.results.at(-1)!.endedAt)) throw Error('Invalid trial start');
+    this.current={startedAt:now,predictedRegion:null,stabilizationMs:null,trackingLossEvents:0,wasLost:false,lastObservedAt:now};
+    return Object.freeze({trial:this.results.length+1,promptedRegion:this.plan[this.results.length],startedAt:now});
+  }
+  observe(snapshot: GazeSnapshot, now: number): void {
+    const trial=this.current; if (!trial || !time(now) || now<trial.lastObservedAt) return;
+    trial.lastObservedAt=now;
+    const lost=snapshot.status==='lost' || snapshot.status==='calibration-required';
+    if (lost&&!trial.wasLost) trial.trackingLossEvents++;
+    trial.wasLost=lost;
+    if (trial.predictedRegion===null && snapshot.status==='tracking' && snapshot.regionId!==null && this.plan.includes(snapshot.regionId)
+      && snapshot.stableSinceMs!==null && snapshot.stableSinceMs>=trial.startedAt && snapshot.stableSinceMs<=now
+      && snapshot.sampleAtMs!==null && snapshot.sampleAtMs>=trial.startedAt && snapshot.sampleAtMs<=now
+      && snapshot.validUntilMs!==null && now<=snapshot.validUntilMs) {
+      trial.predictedRegion=snapshot.regionId; trial.stabilizationMs=now-trial.startedAt;
+    }
+  }
+  /** Finish explicitly or at the experiment's fixed trial deadline; missing estimates abstain. */
+  finish(now: number): GazeTrialResult {
+    const trial=this.current; if (!trial || !time(now) || now<trial.lastObservedAt) throw Error('Invalid trial finish');
+    const promptedRegion=this.plan[this.results.length];
+    const result=Object.freeze({trial:this.results.length+1,promptedRegion,predictedRegion:trial.predictedRegion,
+      outcome:trial.predictedRegion===null ? 'abstained' as const : trial.predictedRegion===promptedRegion ? 'correct' as const : 'incorrect' as const,
+      trackingLossEvents:trial.trackingLossEvents,stabilizationMs:trial.stabilizationMs,startedAt:trial.startedAt,endedAt:now});
+    this.results.push(result); this.current=null; return result;
+  }
+  records(): readonly GazeTrialResult[] { return Object.freeze([...this.results]); }
+  summary(): GazeTrialSummary {
+    const correct=this.results.filter(r=>r.outcome==='correct').length;
+    return Object.freeze({denominator:this.count,completed:this.results.length,pending:this.count-this.results.length,correct,
+      incorrect:this.results.filter(r=>r.outcome==='incorrect').length,abstained:this.results.filter(r=>r.outcome==='abstained').length,
+      correctFraction:correct/this.count,trackingLossEvents:this.results.reduce((n,r)=>n+r.trackingLossEvents,0),pilotGoalMet:this.count===30&&this.results.length===30&&correct>=27});
+  }
+}

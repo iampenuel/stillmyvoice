@@ -13,12 +13,17 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "api": "node server/index.mts"
+    "api": "node server/index.mts",
+    "prepare:gaze": "node scripts/prepare-gaze-assets.mts",
+    "predev": "npm run prepare:gaze",
+    "prebuild": "npm run prepare:gaze"
   },
   "dependencies": {
+    "@google/genai": "3.3.0",
+    "@mediapipe/tasks-vision": "0.10.18",
+    "@realeye-io/webcam-eyetracker-light-open": "1.1.0",
     "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "@google/genai": "3.3.0"
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

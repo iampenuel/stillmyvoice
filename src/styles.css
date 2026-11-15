@@ -64,6 +64,9 @@ h3 { font-size: 20px; font-weight: 600; margin-block: 24px 12px; }
 footer { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 14px; color: var(--muted); }
 footer > p { margin-right: auto; }
 .setup-trigger { font-size: 14px; min-height: 44px; border-color: transparent; background: transparent; padding: 8px 12px; text-decoration: underline; text-underline-offset: 4px; }
+/* The footer is a quiet text control; only keyboard focus gets a visible ring. */
+.setup-trigger:focus:not(:focus-visible) { outline: none; }
+button.setup-trigger:focus-visible { outline: 2px solid var(--focus-ink); outline-offset: 2px; border-radius: 2px; }
 .simulation-switch { min-height: 44px; font-size: 14px; }
 .setup { width: min(48rem, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 28px; border: 1px solid #7b8793; border-radius: 12px; color: #1b232b; background: white; font-size: 16px; overflow: auto; overscroll-behavior: contain; }
 .setup::backdrop { background: rgb(20 28 36 / .38); }

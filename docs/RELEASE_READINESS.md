@@ -1,10 +1,18 @@
 # Current release gate — November 15, 2026
 
-See [reliability and context-layout evidence](HP26_RELIABILITY.md). Current automated verification passes (177 tests, typecheck, build, zero credential findings), and the corrected context layout was inspected at all requested sizes. Real typo correction works as explicit reviewable wording; comprehensive week/weak ambiguity usefulness is not accepted. The owner confirmed actual microphone transcription/context acceptance, audible edited speech, silent Review, fresh switch authorization and Stop for the exercised sequence. General ambiguity usefulness remains open; the owner run also required manual correction of a retained typo. Gaze remains NO-GO.
+**243 automated tests, typecheck and production build pass.** Security audit found zero vulnerabilities; the 151-file credential check found no matches for either private key. The established switch-only Listening → Gemini → correction → silent Review → fresh Speak/Stop sequence has owner acceptance for its exercised case. General Gemini ambiguity usefulness remains limited. Chrome verified the final Companion setup idle link and compact charcoal keyboard focus without changing actual scanned targets.
 
-Only a local checkpoint is authorized in the latest scope. Public main remains a0c6491; current changes are not published. No Devpost submission/deployment/DNS action occurred. Subsequently, owner-authorized read-only Devpost inspection confirmed DRAFT, 2/5 steps complete. Story, technology tags, repository link and required additional-info answers are blank; acknowledgments and final terms are unchecked. Media and prize opt-ins are also empty. No field was changed or submitted. Detailed private findings are in local-reports/DEVPOST_READONLY_AUDIT.md. The official detailed rules were rechecked and retain the November 15 8:00 AM Eastern hard cutoff (earlier than the page's 8:30 banner).
+The isolated gaze experiment is **not accepted for scanner integration**: its first owner-confirmed pilot produced 1/30 correct, 29 abstentions and 82 broad lost-state events. Post-pilot timing/history, geometry and diagnostic corrections are implemented without relaxing stability thresholds; the new six-trial owner diagnostic remains pending. No gaze-assisted physical selection, speech or efficiency pass is claimed. [Gaze evidence and exact scope](GAZE_EXPERIMENT.md).
 
-The following material is retained historical preparation and the existing demonstration script.
+The last verified Gemini local snapshot is **21/300 wording requests**, leaving 279 locally after a restart that preserved 20 consumed requests and one successful live check. This is not daily or upstream quota remaining. [Quota evidence](QUOTA_DIAGNOSTICS.md).
+
+Current source is local only; public main was last verified at a0c6491. The owner approved AGPL-3.0-or-later for the combined application; preserve the license, notices and corresponding tested source in any later authorized release. No push, deployment, DNS change or Devpost edit/submission occurred.
+
+Owner-authorized read-only Devpost inspection confirmed **DRAFT, 2/5 steps complete**. Story, Built with tags, repository URL and required additional-info answers are blank; rules/sponsor acknowledgments and final terms are unchecked. Media and prize opt-ins are also empty. Detailed private findings remain in local-reports/DEVPOST_READONLY_AUDIT.md. These submission blockers remain open.
+
+Stop experimental development and prepare the submission handoff at **6:00 AM Eastern** if readiness is still incomplete. Work to the official detailed-rules **November 15, 8:00 AM Eastern** cutoff, not the conflicting 8:30 banner. Publication and submission still require separate owner authorization.
+
+The following material is historical preparation and the prior demonstration script. Its earlier pending acceptance statements, test counts, license status and public commits are superseded by the current paragraphs above.
 
 # HackPrinceton release readiness
 

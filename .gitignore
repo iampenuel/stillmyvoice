@@ -25,3 +25,6 @@ output/
 test-results/
 playwright-report/
 *.log
+
+# Reproducibly prepared local gaze model, WASM, worker and license assets.
+/public/gaze/
