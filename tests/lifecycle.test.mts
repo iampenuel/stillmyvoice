@@ -1,13 +1,14 @@
+import { initialComposeModel } from './communication-fixture.mts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { InputCoordinator } from '../src/communication/input-coordinator.mts';
-import { choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, speechEvent, type Model } from '../src/communication/model.mts';
+import { choose, inputView, interrupt, presented, retireRuntimeAuthorization, speechEvent, type Model } from '../src/communication/model.mts';
 import type { AdapterCallbacks, DataPort } from '../src/input/web-serial-adapter.mts';
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 const step = (s: Model, id: string) => choose(s, id, s.uiRevision);
 
 async function fixture(initial?: Model) {
-  let model = initial ?? initialModel('lifecycle'); model.draft ||= 'Please reposition me.'; model.settings.voice = 'fixture';
+  let model = initial ?? initialComposeModel('lifecycle'); model.draft ||= 'Please reposition me.'; model.settings.voice = 'fixture';
   let active = true, pressed = false, unavailable = false, serial = 0, opens = 0;
   const sessions: { cb: AdapterCallbacks; epoch: string; sequence: number }[] = [], actions: string[] = [];
   const port = new EventTarget() as DataPort;
@@ -44,7 +45,7 @@ async function fixture(initial?: Model) {
   };
 }
 test('temporary window/tab inactivity preserves compose, review and unfinished correction; return only arms Resume', async () => {
-  const compose = initialModel('context'); compose.draft = 'Please reposition me.';
+  const compose = initialComposeModel('context'); compose.draft = 'Please reposition me.';
   const review = step(compose, 'review');
   const correction = step(step(review, 'edit'), 'word:1');
   const typed = step(step(correction, 'row:abcde'), 'char:d');
@@ -94,17 +95,17 @@ test('real port faults and explicit disconnect do not auto-reconnect on focus; u
   assert.equal(f.model().draft, 'Please reposition me.'); assert.deepEqual(f.actions, []);
 });
 test('focus loss retires prepared speech authorization; returning and Resume cannot restore it', async () => {
-  let m = initialModel('speech'); m.draft = 'Please do not reposition me.'; m.settings.voice = 'fixture';
+  let m = initialComposeModel('speech'); m.draft = 'Please do not reposition me.'; m.settings.voice = 'fixture';
   m = step(m, 'review'); m = presented(m, m.revision, 0); m = step(m, 'speak');
   assert.ok(m.authorization);
   const f = await fixture(m); f.inactive('Focus lost'); await f.foreground(); await f.cycle();
   assert.equal(f.model().draft, m.draft); assert.equal(f.model().authorization, null);
   assert.equal(f.model().screen.name, 'review'); assert.equal(f.model().speech, 'Stopped');
-  assert.equal(initialModel('reload').draft, ''); assert.equal(initialModel('reload').authorization, null);
+  assert.equal(initialComposeModel('reload').draft, ''); assert.equal(initialComposeModel('reload').authorization, null);
   f.coordinator.stop('test done', false); await flush();
 });
 test('controller replacement retires retained approval before a new engine can consume it', () => {
-  let m = initialModel('hot-refresh'); m.draft = 'Do not change my words.'; m.settings.voice = 'fixture';
+  let m = initialComposeModel('hot-refresh'); m.draft = 'Do not change my words.'; m.settings.voice = 'fixture';
   m = step(m, 'review'); m = presented(m, m.revision, 0); m = step(m, 'speak');
   const id = m.authorization!.id;
   const next = retireRuntimeAuthorization(m);

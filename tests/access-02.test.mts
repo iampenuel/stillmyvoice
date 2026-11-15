@@ -1,9 +1,10 @@
+import { initialComposeModel } from './communication-fixture.mts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialModel, choose, choices, inputView, alphabetRows, interrupt, listeningEvent, finishExpansion, type Model } from '../src/communication/model.mts';
+import { choose, choices, inputView, alphabetRows, interrupt, listeningEvent, finishExpansion, type Model } from '../src/communication/model.mts';
 import { InputCoordinator } from '../src/communication/input-coordinator.mts';
 const step = (m: Model, id: string) => { assert.ok(choices(m).some(c => c.id === id && !c.disabled), id); return choose(m,id,m.uiRevision); };
-const fixture = () => { const m=initialModel('access-fixture'); m.draft='belly hurts weak today'; m.cloud.consent=true; m.cloud.gemini=true; return m; };
+const fixture = () => { const m=initialComposeModel('access-fixture'); m.draft='belly hurts weak today'; m.cloud.consent=true; m.cloud.gemini=true; return m; };
 test('visible alphabet retains every letter and reversible grouped fallback with manual exits',()=>{
  let m=step(fixture(),'spell'); assert.equal(m.alphabetMode,'visible'); assert.equal(alphabetRows.join(''),'abcdefghijklmnopqrstuvwxyz');
  for(const row of alphabetRows){const letters=step(m,'row:'+row); for(const letter of row){const typed=step(letters,'char:'+letter);assert.equal(typed.draft,m.draft+letter);assert.equal(typed.screen.value,'rows');assert.equal(inputView(typed).targets[0],'row:'+row);assert.equal(typed.authorization,null);}}

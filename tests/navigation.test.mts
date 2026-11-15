@@ -1,8 +1,9 @@
+import { initialComposeModel } from './communication-fixture.mts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { InputCoordinator } from '../src/communication/input-coordinator.mts';
 import type { DataPort, AdapterCallbacks } from '../src/input/web-serial-adapter.mts';
-import { choose, initialModel, inputView, presented, speechEvent } from '../src/communication/model.mts';
+import { choose, inputView, presented, speechEvent } from '../src/communication/model.mts';
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 test('view navigation closes old session before opening same verified port, with no selection from held rearming', async () => {
   let serial = 0, open = 0, maxOpen = 0; const callbacks: AdapterCallbacks[] = [], epochs: string[] = [], selected: string[] = [];
@@ -74,7 +75,7 @@ test('DTR-low settling is shared by rapid view changes and focus loss prevents a
   assert.equal(opens, 1); assert.equal(c.mode, 'none');
 });
 test('phrase, playback, negation edit and review each require their own fresh exact-text approval', async () => {
-  let model = initialModel('integrated'); model.settings.voice = 'test-voice';
+  let model = initialComposeModel('integrated'); model.settings.voice = 'test-voice';
   let callbacks!: AdapterCallbacks, epoch = '', sequence = 0, serial = 0, actions = 0;
   const port = new EventTarget() as DataPort;
   const c = new InputCoordinator(inputView(model), {
@@ -104,9 +105,9 @@ test('phrase, playback, negation edit and review each require their own fresh ex
   assert.equal(c.state.view?.targets.includes('speak'), false);
   model = presented(model, model.revision, 0); c.setView(inputView(model)); await flush();
   assert.ok(c.state.view?.targets.includes('speak')); assert.equal(model.authorization, null);
-  await select('speak'); assert.equal((model as ReturnType<typeof initialModel>).authorization?.text, 'Please reposition me.');
+  await select('speak'); assert.equal((model as ReturnType<typeof initialComposeModel>).authorization?.text, 'Please reposition me.');
   assert.equal(actions, 4); assert.deepEqual(c.state.view?.targets, ['stop']);
-  const first = (model as ReturnType<typeof initialModel>).authorization!;
+  const first = (model as ReturnType<typeof initialComposeModel>).authorization!;
   model = speechEvent(model, first.id, 'end'); c.setView(inputView(model)); await flush();
   await select('edit'); await select('word:1');
   for (const letter of 'do not reposition') {
@@ -121,7 +122,7 @@ test('phrase, playback, negation edit and review each require their own fresh ex
   // An old playback completion cannot grant approval or navigate this new review.
   assert.equal(speechEvent(model, first.id, 'end'), model);
   await select('speak');
-  const second = (model as ReturnType<typeof initialModel>).authorization!;
+  const second = (model as ReturnType<typeof initialComposeModel>).authorization!;
   assert.equal(second.text, 'Please do not reposition me.'); assert.notEqual(second.id, first.id);
   c.stop('Test complete', false); await flush();
 });

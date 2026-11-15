@@ -27,6 +27,9 @@ const groups = ['abcde', 'fghij', 'klmno', 'pqrst', 'uvwxyz'];
 const fixtures = ['help', 'headache', 'belly weak today', 'please do not move', 'please reposition me'];
 function run(lib: typeof current, text: string) {
   let state = lib.initialModel('fictional-visible-keyboard');
+  // Historical models already opened Compose; preserve their original setup.
+  if (state.screen.name === 'context') state = lib.choose(state, 'context-set:general', state.uiRevision);
+  assert.equal(state.screen.name, 'compose');
   if (lib === current) assert.equal((state as current.Model & { alphabetMode?: string }).alphabetMode, 'visible', 'The new condition must actually use the visible experiment');
   let selections = 0, scanAdvances = 0;
   const trace: { action: string; advances: number }[] = [];
@@ -64,6 +67,6 @@ console.log(JSON.stringify({
   baselineCommit,
   baselineModelSha256: createHash('sha256').update(baselineSource).digest('hex'),
   currentModelSha256: createHash('sha256').update(readFileSync(new URL('../src/communication/model.mts', import.meta.url))).digest('hex'),
-  assumptions: 'Same exact lowercase fictional text, empty draft, AI disabled, existing five alphabetical row groups, Spell and Done included. Actual enabled target order and configured starting target; no missed targets. Current default is the visible experiment; historical baseline uses range selection. No inferred timing, physical events, review or speech.',
+  assumptions: 'Current General context is explicitly selected as session setup outside the counted task; historical Compose setup is unchanged. Same exact lowercase fictional text, empty draft, AI disabled, existing five alphabetical row groups, Spell and Done included. Actual enabled target order and configured starting target; no missed targets. Current default is the visible experiment; historical baseline uses range selection. No inferred timing, physical events, review or speech.',
   rows: fixtures.map(text => ({ text, acceptedRanges: run(baseline, text), visibleExperiment: run(current, text) })),
 }, null, 2));

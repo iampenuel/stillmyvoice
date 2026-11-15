@@ -1,4 +1,15 @@
-# Project state — visible keyboard and precise quota diagnostics
+# Project state — context-first AI demonstration
+
+Latest final directive: fresh sessions open the existing Communication context selector (Home, Healthcare, Community, Education & Work, General). Selection enters the unchanged Make your message workspace. Context-specific quick phrases retain Stop/Help and unrestricted spelling; changing context preserves the draft. Phrases, Spell, Listen and Expand are direct primary controls. Candidate actions are Use this wording, Edit, Keep my words and Back; acceptance enters silent full review and requires separate fresh Speak approval.
+
+Developer Chrome check: a real Healthcare expansion of fictional `belly hurts weak today` returned `My belly hurts and I feel weak today.` without changing the original before acceptance. Gemini 3.5 Flash Lite made one upstream call, 772 ms provider / 774 ms server latency, schema validated. Real negation returned `Do not reposition me.` (one call, 1,252 ms provider latency). The ambiguous daily-scope fixture asked for clarification locally with zero provider calls; it is not presented as model success. Used allowance is now 7/20, preserved across the controlled restart. The owner has Google AI Plus; the existing key, free-tier and billing gates remain unchanged.
+
+157 regression tests pass. Context, main controls and candidate actions fit at 1024×672; narrow reflow and actual 200% zoom were checked. Actual microphone transcription and the full latest physical AI/speech workflow await owner confirmation. The original single SMV tab is prepared with LaSean selected, cloud consent checked and context selection awaiting physical connection/Resume. Input reducer, firmware and per-voice compatibility are unchanged. See [final checkpoint evidence and repeat](HP26_FINAL_DEMO.md).
+
+Future Git author/committer are repository-locally configured as iampenuel with an observed GitHub-associated email; existing public commits are not rewritten. Public main was verified at 6165d71 before this checkpoint. The final directive authorizes verifying the latest committed source is public; the final report records the resulting SHA and observed account linkage. No deployment, DNS change or Devpost submission is authorized by that publication.
+
+The following checkpoint notes are historical; the current paragraphs above govern implementation and remaining acceptance.
+
 
 Latest owner steering: Google AI **Plus**, not Pro; no developer-credit or paid-tier entitlement is inferred. The existing Gemini key and verified free-tier gates remain unchanged. Approved public main now points to **c1da080aa789c4c3ba113c853b88d3a3940a76be**, with its original history. The subsequent quota/keyboard correction is a local checkpoint pending publication approval. No deployment, DNS change or Devpost submission occurred.
 

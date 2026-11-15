@@ -4,6 +4,9 @@
 
 ## Current status
 
+The final demonstration checkpoint opens with the existing context selector and keeps the same communication workspace across all contexts. Contextual phrase sets share Stop/Help and unrestricted spelling. Phrases, Spell, Listen and Expand are directly visible; optional AI wording preserves the original until chosen, then enters complete silent review before a fresh speech approval. [Current implementation and scoped evidence](docs/HP26_FINAL_DEMO.md).
+
+
 ACCESS-02 adds an experimental all-letter row-column keyboard with grouped fallback and optional consent-based, bounded Scribe v3 Listening. Transcripts are reviewed as context, never inserted as authored words. The owner reported that the complete LaSean/intent physical script at `18b92a6` worked; this covers that exercised flow, not the new microphone/combined workflow. [Implementation and physical script](docs/HP26_ACCESS_02.md).
 
 The latest local UI follow-up gives letters stable individual boundaries in both scanning stages and keeps Space, Delete, Expand and Review in a compact action area. Browser checks passed at 1440×756 and 1024×672 with all letters and actions visible and no page scroll. Narrow 390×844 and actual Chrome 200% zoom reflow preserve access through necessary vertical scrolling without horizontal overflow. These are browser observations; physical acceptance of the new keyboard and microphone/combined workflow remains pending. [Current release status](docs/RELEASE_READINESS.md).
@@ -52,4 +55,4 @@ The official event requires a public code repository and accurate attribution. P
 - [Branding boundaries](docs/BRANDING.md): `stillmyvoice.club`, registered according to the owner, deployment unconfirmed; no production domain is configured.
 - [Third-party notices](THIRD_PARTY_NOTICES.md) and [local instruction registry](docs/SKILLS_REGISTRY.md)
 
-This prototype has no clinical validation or accessibility-conformance claim. It is not deployed or submitted. Optional Listening is implemented pending actual microphone and combined physical acceptance; gaze remains deferred. The latest local follow-up passed 148 tests, typecheck, build and credential scanning; its publication remains pending. A successful build or synthetic test is not evidence of real physical or audible success.
+This prototype has no clinical validation or accessibility-conformance claim. It is not deployed or submitted. Optional Listening is implemented pending actual microphone and combined physical acceptance; gaze remains deferred. The latest local follow-up passed 157 tests, typecheck, build and credential scanning; its publication remains pending. A successful build or synthetic test is not evidence of real physical or audible success.

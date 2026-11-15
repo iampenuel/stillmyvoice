@@ -2,6 +2,10 @@
 
 Updated November 14, 2026. INTENT-01 supersedes the earlier preferred-model limitation and pending Cecily acceptance below: LaSean now uses a verified server-side Flash v2 exception; the other five retain Flash v2.5. The owner reports exact Cecily phrase playback once. Optional context and deliberate keyword expansion use the existing gated Gemini boundary. [Current evidence](HP26_INTENT_01.md). ElevenLabs and direct Gemini are wired into the existing communication controller. The deterministic phrase, spelling, correction and system-speech pathways remain available. No firmware or physical-input reducer changes were made.
 
+## Final demonstration evidence
+
+The existing gated Gemini API produced an actual browser Healthcare candidate with one upstream call and schema validation; content-free `/api/status` diagnostics now report route, model, call count, provider/total latency, outcome and schema-validation status. Audited local clarification reports `upstreamCalls: 0`, `providerOutcome: not_called`, and null provider latency/schema status. These counters retain no prompts, drafts, transcripts or request IDs. [Exact bounded fictional results](HP26_FINAL_DEMO.md). Actual Scribe microphone capture and the complete final physical workflow remain awaiting owner acceptance. The listening service, six voice IDs/models and speech authority are preserved.
+
 ## Account gates and privacy
 
 Owner correction: the consumer promotion is **Google AI Plus**, not Google AI Pro. It is not evidence of API credits, paid API eligibility or higher Gemini limits. The existing key, separately verified free-tier API project and no-billing restriction remain the basis for the demo. No new key, billing activation, credit purchase or allowance increase was performed.

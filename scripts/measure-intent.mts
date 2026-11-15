@@ -23,6 +23,9 @@ const alphabetRows = ['abcde', 'fghij', 'klmno', 'pqrst', 'uvwxyz'];
 
 function runner(expansionAvailable = true) {
   let state: Model = initialModel('fictional-intent-measure');
+  // Shared session setup is explicit and outside the measured message task.
+  if (state.screen.name === 'context') state = choose(state, 'context-set:general', state.uiRevision);
+  assert.equal(state.screen.name, 'compose');
   // Identical prepared voice. Baseline excludes disabled AI targets; no real provider runs.
   state.settings.voice = 'fixture-voice';
   state.cloud.consent = expansionAvailable;
@@ -148,7 +151,7 @@ const validatorSha256 = createHash('sha256').update(readFileSync(new URL('../ser
 console.log(JSON.stringify({
   evidence: 'Automated deterministic model traversal with scripted provider fixtures; not hardware, browser, provider-performance or AAC-user evidence.',
   modelSha256, validatorSha256,
-  assumptions: 'Start with an empty draft, a prepared voice and released/armed input. Baseline has AI disabled; assisted has cloud demo gates ready. Both routes use the same fixed letter groups, exact target capitalization/punctuation and General context. Each fresh view starts at inputView initial target; no targets are missed. Setup, Resume, reading, physical press durations, synchronization, network and playback are unmeasured. Each simulated choose stands for one deliberate complete cycle but is not a physical event.',
+  assumptions: 'General is explicitly selected as session setup outside the counted task. Start with an empty draft, a prepared voice and released/armed input. Baseline has AI disabled; assisted has cloud demo gates ready. Both routes use the same fixed letter groups, exact target capitalization/punctuation and General context. Each fresh view starts at inputView initial target; no targets are missed. Setup, Resume, reading, physical press durations, synchronization, network and playback are unmeasured. Each simulated choose stands for one deliberate complete cycle but is not a physical event.',
   rows,
   contextSetup: ['home', 'healthcare', 'community', 'education_work'].map(value => contextSetup(value as CommunicationContext)),
   existingComfortPhraseRoute: quickPhrase.result(),

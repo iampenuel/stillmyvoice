@@ -1,20 +1,21 @@
+import { initialComposeModel } from './communication-fixture.mts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { choices, choiceSections, choose, initialModel, inputView, presented } from '../src/communication/model.mts';
+import { choices, choiceSections, choose, inputView, presented } from '../src/communication/model.mts';
 import { revealDelta } from '../src/communication/view-layout.mts';
 import { InputCoordinator } from '../src/communication/input-coordinator.mts';
-const step = (s: ReturnType<typeof initialModel>, id: string) => {
+const step = (s: ReturnType<typeof initialComposeModel>, id: string) => {
   assert.ok(choices(s).some(c => c.id === id && !c.disabled), id); return choose(s, id, s.uiRevision);
 };
 test('quick phrases reduce category navigation while composition and review remain silent', () => {
-  let s = initialModel('quick'); s.settings.voice = 'fixture';
+  let s = initialComposeModel('quick'); s.settings.voice = 'fixture';
   s = step(step(s, 'phrases'), 'phrase:2');
   assert.equal(s.draft, 'Please reposition me.'); assert.equal(s.authorization, null);
   s = step(s, 'review'); assert.equal(s.authorization, null); assert.equal(choose(s, 'speak', s.uiRevision), s);
   s = presented(s, s.revision, 0); s = step(s, 'speak'); assert.equal(s.authorization?.text, 'Please reposition me.');
 });
 test('explicit negation shortcut stages exact occurrence replacement, supports rejection, and never speaks', () => {
-  let s = initialModel('repair'); s.draft = 'Please reposition me; reposition later.'; s.settings.voice = 'fixture';
+  let s = initialComposeModel('repair'); s.draft = 'Please reposition me; reposition later.'; s.settings.voice = 'fixture';
   s = step(step(step(s, 'review'), 'edit'), 'word:1');
   const original = s.draft;
   let staged = step(s, 'prefix:not');
@@ -28,7 +29,7 @@ test('explicit negation shortcut stages exact occurrence replacement, supports r
   assert.equal(choose(staged, 'speak', staleRevision), staged);
 });
 test('direct Space, Backspace and Done keep the same letter groups and exact characters', () => {
-  let s = step(initialModel('typing'), 'spell');
+  let s = step(initialComposeModel('typing'), 'spell');
   const groups = choices(s).slice(0, 5).map(x => x.id);
   s = step(step(s, 'row:fghij'), 'char:h'); s = step(s, 'char: ');
   assert.equal(s.draft, 'h '); assert.deepEqual(choices(s).slice(0, 5).map(x => x.id), groups);
@@ -36,14 +37,14 @@ test('direct Space, Backspace and Done keep the same letter groups and exact cha
   assert.equal(s.screen.name, 'compose'); assert.equal(s.authorization, null);
 });
 test('registered scan targets follow rendered content/navigation order, with disabled choices excluded', () => {
-  const initial = initialModel('view');
+  const initial = initialComposeModel('view');
   for (const s of [initial, step(initial, 'phrases'), step(initial, 'spell'), step(initial, 'more')]) {
     const sections = choiceSections(s);
     assert.deepEqual(inputView(s).targets, [...sections.primary, ...sections.navigation].filter(x => !x.disabled).map(x => x.id));
   }
 });
 test('normal keyboard overview has five stable groups plus Expand and a compact navigation set', () => {
-  let s = initialModel('overview'); s.draft = 'fictional keywords'; s.cloud.consent = true; s.cloud.gemini = true;
+  let s = initialComposeModel('overview'); s.draft = 'fictional keywords'; s.cloud.consent = true; s.cloud.gemini = true;
   s = step(s, 'spell');
   const groups = ['row:abcde', 'row:fghij', 'row:klmno', 'row:pqrst', 'row:uvwxyz'];
   assert.deepEqual(choiceSections(s).primary.map(x => x.id), [...groups, 'expand']);

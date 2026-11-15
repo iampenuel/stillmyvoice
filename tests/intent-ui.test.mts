@@ -1,11 +1,12 @@
+import { initialComposeModel } from './communication-fixture.mts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialModel, choose, choices, choiceSections, inputView, finishExpansion, interrupt, retireRuntimeAuthorization, presented, speechEvent, withCloudDefaults, type Model } from '../src/communication/model.mts';
+import { choose, choices, choiceSections, inputView, finishExpansion, interrupt, retireRuntimeAuthorization, presented, speechEvent, withCloudDefaults, type Model } from '../src/communication/model.mts';
 import { contextOptions, type ExpansionResult } from '../src/communication/expansion-contract.mts';
 import { approvedVoices } from '../src/communication/cloud-contract.mts';
 const step = (m: Model, id: string) => { assert.ok(choices(m).some(c => c.id === id && !c.disabled), id + ' in ' + m.screen.name); return choose(m, id, m.uiRevision); };
 const fixture = (text = 'belly hurts weak today') => {
-  const m = initialModel('intent-fixture'); m.draft = text; m.settings.voice = 'local';
+  const m = initialComposeModel('intent-fixture'); m.draft = text; m.settings.voice = 'local';
   m.cloud.consent = true; m.cloud.gemini = true; m.cloud.elevenlabs = true;
   m.cloud.voices = approvedVoices.map(v => ({ ...v, available: true, reason: 'fixture', auditioned: false })); return m;
 };
@@ -24,7 +25,7 @@ test('changing voice candidates clears stale preview status without altering aut
   assert.equal(empty.speech, 'Not spoken'); assert.equal(empty.authorization, null);
 });
 
-test('context is optional, four grid choices plus General, persistent and silent', () => {
+test('specific context remains optional through General; context changes stay persistent and silent', () => {
   const original = fixture(); assert.equal(original.context, 'general');
   for (const option of contextOptions) {
     let m = step(original, 'context');

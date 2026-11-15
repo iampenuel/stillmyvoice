@@ -153,3 +153,47 @@ main[data-large-text="true"] .navigation-choices { grid-template-columns: minmax
     overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
 }
+
+/* Direct communication entry uses the existing panel, surfaces and scan targets. */
+.interaction-scroll[data-screen="compose"] .choices { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.interaction-scroll[data-screen="compose"] .navigation-choices { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.interaction-scroll[data-screen="compose"] [data-choice="context"] { grid-column: 1 / -1; }
+.interaction-scroll[data-screen="compose"] .navigation-choices .target-envelope button { min-height: 60px; padding: 8px 12px; }
+.interaction-scroll[data-screen="compose"] [data-choice="context"] button { flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.interaction-scroll[data-screen="compose"] [data-choice="context"] .scan-label { margin-left: auto; }
+.interaction-scroll[data-screen="compose"] [data-choice="context"] .choice-label { font-size: calc(17px * var(--text-scale,1)); }
+.interaction-scroll[data-screen="compose"] [data-choice="context"] .choice-detail { font-size: calc(16px * var(--text-scale,1)); }
+.interaction-scroll[data-screen="context"] .navigation-choices { margin-top: 0; }
+@media (min-width: 64rem) and (min-height: 42rem) {
+  main:not([data-large-text="true"]) .interaction-scroll:is([data-screen="compose"],[data-screen="context"]) { gap: 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="compose"] .target-envelope button { min-height: 88px; padding: 10px 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="compose"] .navigation-choices { padding-top: 10px; gap: 8px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="compose"] .navigation-choices .target-envelope button { min-height: 52px; padding: 6px 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="compose"] .navigation-choices .choice-label { font-size: 18px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .target-envelope button { min-height: 88px; padding: 8px 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .choice-label { font-size: 21px; }
+}
+@media (max-width: 40rem) {
+  .interaction-scroll[data-screen="compose"] .choices { grid-template-columns: minmax(0,1fr); }
+}
+main[data-large-text="true"] .interaction-scroll[data-screen="compose"] :is(.choices,.navigation-choices) { grid-template-columns: minmax(0,1fr); }
+@media (min-width: 64rem) and (min-height: 42rem) {
+  /* The status strip and target outline already identify scan/held state. */
+  main:not([data-large-text="true"]) .interaction-scroll:is([data-screen="compose"],[data-screen="context"]) .scan-label { display: none; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .choice-detail { font-size: 14px; line-height: 1.35; }
+}
+@media (min-width: 64rem) and (min-height: 42rem) {
+  main:not([data-large-text="true"]) .interaction-panel:is([data-screen="context"],[data-screen="compose"],[data-screen="expansion"]) { padding: 16px; gap: 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .choices { gap: 8px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .navigation-choices { padding-top: 8px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .target-envelope button { min-height: 80px; }
+}
+
+@media (min-width: 64rem) and (min-height: 42rem) {
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="expansion"] { gap: 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="expansion"] .choices { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="expansion"] .target-envelope button { min-height: 64px; padding: 8px 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="expansion"] .choice-label { font-size: 20px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="expansion"] .scan-label { display: none; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="expansion"] .navigation-choices { padding-top: 8px; }
+}

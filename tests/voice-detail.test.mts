@@ -1,7 +1,8 @@
+import { initialComposeModel } from './communication-fixture.mts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { approvedVoices, PREVIEW_TEXT } from '../src/communication/cloud-contract.mts';
-import { choose, choices, initialModel, inputView, interrupt, speechEvent, type Model } from '../src/communication/model.mts';
+import { choose, choices, inputView, interrupt, speechEvent, type Model } from '../src/communication/model.mts';
 import { InputCoordinator } from '../src/communication/input-coordinator.mts';
 
 const step = (model: Model, id: string) => {
@@ -9,7 +10,7 @@ const step = (model: Model, id: string) => {
   return choose(model, id, model.uiRevision);
 };
 function fixture() {
-  const model = initialModel('voice-detail-fixture');
+  const model = initialComposeModel('voice-detail-fixture');
   model.draft = 'Please move my left arm, not my right.';
   model.revision = 7; model.lastPlayed = 'Please stop.';
   model.voices = [{ id: 'system-fixture', name: 'System fixture', lang: 'en-US', local: true }];

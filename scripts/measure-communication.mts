@@ -4,7 +4,9 @@ import * as current from '../src/communication/model.mts';
 import {writeFileSync} from 'node:fs';
 type Library = typeof current;
 function run(lib: Library, actions: string[], text = '', completed = false) {
-  let state = lib.initialModel('fictional-measure'); state.settings.voice = 'fixture';
+  let state = lib.initialModel('fictional-measure');
+  if (state.screen.name === 'context') state = lib.choose(state, 'context-set:general', state.uiRevision);
+  state.settings.voice = 'fixture';
   state.draft = text; if(completed) state.screen = {name:'complete'};
   let selections = 0, scanAdvances = 0;
   for(const action of actions) {
@@ -28,6 +30,6 @@ const rows = [
  {task:'Replace left with right, review and approve', before:run(before,['edit','word:2',...spell('right',false),'review','speak'],'Move my left arm.',true), after:run(current,['edit','word:2',...spell('right',true),'review','speak'],'Move my left arm.',true)},
  {task:'Review and approve an already edited message', before:run(before,['review','speak'],'Please do not reposition me.'), after:run(current,['review','speak'],'Please do not reposition me.')},
 ];
-const report = {evidence:'Deterministic model traversal, not physical measurements or time estimates. Scan advances assume each fresh view starts at its configured initial target and no missed target. Setup, reading time, transport delays and errors excluded.',baseline:'d5b5006',rows};
+const report = {evidence:'Deterministic model traversal, not physical measurements or time estimates. Current General context is explicitly selected as uncounted session setup; historical Compose setup is unchanged. Scan advances assume each fresh view starts at its configured initial target and no missed target. Setup, reading time, transport delays and errors excluded.',baseline:'d5b5006',rows};
 writeFileSync('local-reports/UX03_EFFICIENCY.json',JSON.stringify(report,null,2),{mode:0o600});
 console.log(JSON.stringify(report,null,2));

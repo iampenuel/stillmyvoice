@@ -8,7 +8,12 @@ The rules require code built within the November 13 8 PM–November 15 8 AM even
 
 ## Current readiness
 
-Public main is verified at [`c1da080`](https://github.com/iampenuel/stillmyvoice/tree/c1da080). The newer keyboard UI/diagnostic follow-up is local pending publication. Final verification passed: 148 automated tests, typecheck, production build, and a 98-file source/bundle scan with zero credential findings. Both private key values were compared without displaying them.
+Final demonstration follow-up: context-first entry, contextual quick phrases and direct Listen/Expand are implemented. 157 tests pass; final typecheck/build and credential checks are recorded in [checkpoint evidence](HP26_FINAL_DEMO.md). Real browser Gemini Healthcare expansion and negation succeeded with measured upstream evidence. Local ambiguity clarification is explicitly distinguished from Gemini output. The full actual-microphone/physical AI/speech run is awaiting owner confirmation; the single original tab is prepared. Future commits use repository-local iampenuel attribution with an observed account-associated email; no public history rewrite.
+
+The paragraphs below describe the published 6165d71 baseline and subsequent work before this final follow-up.
+
+
+Public main was verified at [`6165d71`](https://github.com/iampenuel/stillmyvoice/tree/6165d71). The newer keyboard UI/diagnostic follow-up is local pending publication. Final verification passed: 148 automated tests, typecheck, production build, and a 98-file source/bundle scan with zero credential findings. Both private key values were compared without displaying them.
 
 - **Owner physical evidence:** phrase/spelling/correction/system speech and released-switch focus recovery have acceptance for their exercised scenarios. Cecily's exact phrase was confirmed. At `18b92a6`, the owner reported that the complete LaSean preview, voice choice, switch spelling, intent expansion, silent review and separate Speak script worked. The owner did not separately supply timings or transcribe that run's heard words. [Intent evidence](HP26_INTENT_01.md), [ACCESS-02 scope](HP26_ACCESS_02.md).
 - **Voice compatibility:** all six verified voice identities retain their assigned models. LaSean's Flash v2 exception is implemented and tested; the previous Flash v2.5 issue is not a current release blocker. No automatic voice replacement or global-model change was made. Remaining unexercised voice auditions and interruption/Stop scenarios must not be described as passed.

@@ -1,12 +1,13 @@
+import { initialComposeModel } from './communication-fixture.mts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { approvedVoices, PREMIUM_MODEL, PREVIEW_TEXT } from '../src/communication/cloud-contract.mts';
-import { choose, choices, initialModel, presented, speechEvent, interrupt, finishAssistance, type Model } from '../src/communication/model.mts';
+import { choose, choices, presented, speechEvent, interrupt, finishAssistance, type Model } from '../src/communication/model.mts';
 import { createElevenLabs, resolveApprovedVoices, modelForVoice } from '../server/elevenlabs.mts';
 const step = (s: Model, id: string) => { assert.ok(choices(s).some(c => c.id === id && !c.disabled), id); return choose(s, id, s.uiRevision); };
 const inventory = () => approvedVoices.map(v => ({ voice_id: v.id, name: v.apiName, fine_tuning: { state: { [modelForVoice(v.id)]: 'fine_tuned' } }, sharing: { rate: 1 } }));
 function model() {
-  const s = initialModel('cloud-fixture'); s.draft = 'Please move my left arm, not my right.';
+  const s = initialComposeModel('cloud-fixture'); s.draft = 'Please move my left arm, not my right.';
   s.voices = [{ id: 'local', name: 'Local fixture', lang: 'en-US', local: true }]; s.settings.voice = 'local';
   s.cloud = { ...s.cloud, consent: true, elevenlabs: true, gemini: true, voices: resolveApprovedVoices(inventory()) }; return s;
 }

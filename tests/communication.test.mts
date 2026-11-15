@@ -1,11 +1,12 @@
+import { initialComposeModel } from './communication-fixture.mts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { choices, choose, initialModel, interrupt, paginate, presented, speechEvent, type Model } from '../src/communication/model.mts';
+import { choices, choose, interrupt, paginate, presented, speechEvent, type Model } from '../src/communication/model.mts';
 import { SpeechController, type SpeechEngine } from '../src/communication/speech.mts';
 
 function step(s: Model, id: string) { assert.ok(choices(s).some(x => x.id === id && !x.disabled), `available ${id} on ${s.screen.name}`); return choose(s, id, s.uiRevision); }
 function message(text = 'I am not in pain.') {
-  const s = initialModel('test-session'); s.draft = text; s.revision = 1;
+  const s = initialComposeModel('test-session'); s.draft = text; s.revision = 1;
   s.voices = [{ id: 'fixture', name: 'Test voice', lang: 'en-US', local: true }]; s.settings.voice = 'fixture'; return s;
 }
 function reviewed(text?: string) {
@@ -17,7 +18,7 @@ function reviewed(text?: string) {
   return s;
 }
 test('phrase composition and review never authorize speech; a fresh activation freezes exact text', () => {
-  let s = initialModel('instance'); s.settings.voice = 'fixture';
+  let s = initialComposeModel('instance'); s.settings.voice = 'fixture';
   s = step(step(s, 'phrases'), 'phrase:2');
   assert.equal(s.draft, 'Please reposition me.'); assert.equal(s.authorization, null);
   s = step(s, 'review'); const oldRevision = s.uiRevision;
@@ -55,7 +56,7 @@ test('empty correction is not deletion; explicit deletion stages then applies', 
   assert.equal(s.draft, 'No. Thank you.'); s = step(s, 'done'); assert.equal(s.draft, '. Thank you.');
 });
 test('spelling, case, punctuation and intentional clear are switch reachable without text normalization', () => {
-  let s = step(initialModel('spelling'), 'spell');
+  let s = step(initialComposeModel('spelling'), 'spell');
   s = step(step(s, 'row:editing'), 'upper'); s = step(step(s, 'row:rows'), 'row:fghij'); s = step(s, 'char:i');
   s = step(step(s, 'row:editing'), 'char: '); s = step(step(s, 'row:klmno'), 'char:n');
   s = step(s, 'done'); assert.equal(s.draft, 'I n');

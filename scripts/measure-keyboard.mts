@@ -8,6 +8,8 @@ const rows = ['abcde', 'fghij', 'klmno', 'pqrst', 'uvwxyz'];
 const fixtures = ['bed', 'feed', 'school', 'book', 'help', 'please', 'reposition', 'need', 'not', 'belly hurts weak today'];
 function measure(text: string, remainWithinGroup: boolean) {
   let state = initialModel('fictional-keyboard-measure');
+  if (state.screen.name === 'context') state = choose(state, 'context-set:general', state.uiRevision);
+  assert.equal(state.screen.name, 'compose');
   let selections = 0, scanAdvances = 0;
   const trace: { action: string; advances: number; view: string }[] = [];
   function select(action: string) {
@@ -49,6 +51,6 @@ function measure(text: string, remainWithinGroup: boolean) {
 console.log(JSON.stringify({
   evidence: 'Automated current-model traversal versus a hypothetical post-letter screen override; not physical performance or implemented behavior.',
   modelSha256: createHash('sha256').update(readFileSync(new URL('../src/communication/model.mts', import.meta.url))).digest('hex'),
-  assumptions: 'Empty draft; AI disabled equally; fixed alphabet groups and existing Back to rows/Space/Done controls. Include Spell and Done. Current policy resets to groups with its existing last-group focus. Hypothetical policy retains letter group, restarting at first letter after each choice; existing Back to rows resets to first group. No missed targets, physical durations, review/speech, or measured times.',
+  assumptions: 'General is explicitly selected as session setup outside the counted task. Empty draft; AI disabled equally; fixed alphabet groups and existing Back to rows/Space/Done controls. Include Spell and Done. Current policy resets to groups with its existing last-group focus. Hypothetical policy retains letter group, restarting at first letter after each choice; existing Back to rows resets to first group. No missed targets, physical durations, review/speech, or measured times.',
   rows: fixtures.map(text => ({ text, current: measure(text, false), remainWithinGroup: measure(text, true) })),
 }, null, 2));

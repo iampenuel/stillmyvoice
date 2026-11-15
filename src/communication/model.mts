@@ -34,6 +34,10 @@ export type ExpansionState = { request: ExpansionRequest | null; source: string;
 const initialExpansion = (): ExpansionState => ({ request: null, source: '', revision: 0, result: null, state: 'idle', error: '', answer: '', editing: false, buffer: '', undo: [] });
 const editingText = (s: Model) => s.expansion.editing ? s.expansion.buffer : s.repair?.buffer ?? s.draft;
 const canExpand = (s: Model) => !!s.draft.trim() && s.cloud.consent && s.cloud.gemini;
+const expansionHint = (s: Model) => !s.draft.trim() ? 'Add a few words first.'
+  : !s.cloud.consent ? 'Enable fictional cloud demo in Companion setup.'
+  : !s.cloud.gemini ? s.cloud.geminiReason || 'Gemini is unavailable. You can still spell and use phrases.'
+  : 'Optional wording suggestion.';
 export const phrases: Record<string, readonly string[]> = {
   Essentials: ['I need help.', 'Please stop.', 'Yes.', 'No.'],
   Comfort: ['Please reposition me.', 'I am not ready.', 'Please give me a moment.'],
@@ -41,7 +45,15 @@ export const phrases: Record<string, readonly string[]> = {
   Conversation: ['Hello.', 'Thank you.', 'I have something to say.', 'Please wait while I write.'],
 };
 export const quickPhrases = ['Please stop.', 'I need help.', 'Please reposition me.', 'I am not ready.', 'Please repeat that.', 'That is not what I meant.'] as const;
-const phraseList = (category: string) => category === 'Quick phrases' ? quickPhrases : phrases[category];
+/** Initial fictional vocabulary, never a diagnosis or a restriction on spelling. */
+export const contextPhrases: Record<CommunicationContext, readonly string[]> = {
+  home: ['Please stop.', 'I need help.', 'Please help me.', 'I need some rest.', 'Can we talk?', 'Please give me a moment.'],
+  healthcare: ['Please stop.', 'I need help.', 'Please repeat that.', 'I am uncomfortable.', 'I have a question.', 'That is not what I meant.'],
+  community: ['Please stop.', 'I need help.', 'How are you?', 'I have something to say.', "I'd like to join.", 'Could you give me a moment?'],
+  education_work: ['Please stop.', 'I need help.', 'I have a question.', 'Please explain that again.', 'I would like to contribute.', 'I need more time.'],
+  general: quickPhrases,
+};
+const phraseList = (category: string, context: CommunicationContext) => category === 'Quick phrases' ? contextPhrases[context] : phrases[category];
 const c = (id: string, label: string, disabled = false, detail?: string): Choice => ({ id, label, disabled, detail });
 const speechAvailable = (s: Model) => !!s.settings.voice && (s.settings.provider === 'browser' || (s.cloud.consent && s.cloud.elevenlabs && s.cloud.voices.some(v => v.id === s.settings.voice && v.available)));
 export const candidateVoice = (s: Model) => s.screen.name === 'voice-detail' ? s.cloud.voices.find(v => v.id === s.screen.value) : undefined;
@@ -49,7 +61,7 @@ const candidateAvailable = (s: Model) => !!candidateVoice(s)?.available && s.clo
 const back = () => c('back', 'Back');
 const more = () => c('more', 'More controls');
 export function initialModel(session: string): Model {
-  return { draft: '', revision: 0, uiRevision: 0, undo: [], screen: { name: 'compose' }, stack: [], notice: '', focusId: null,
+  return { draft: '', revision: 0, uiRevision: 0, undo: [], screen: { name: 'context' }, stack: [], notice: '', focusId: null,
     provenance: 'Your words', repair: null, upper: false, review: null, authorization: null, speech: 'Not spoken',
     context: 'general', expansion: initialExpansion(), alphabetMode: 'visible', listenedContext: '', listen: initialListening(), lastPlayed: null, serial: 0, session, voices: [], cloud: initialCloud(), assistance: { request: null, revision: 0, state: 'idle', items: [], error: '' },
     settings: { pace: 1600, size: 100, voice: '', rate: 1, provider: 'browser' } };
@@ -61,7 +73,7 @@ export function inputView(model: Model) {
   const start = model.focusId ? Math.max(0, targets.indexOf(model.focusId)) : 0;
   return { id: model.screen.name, revision: model.uiRevision, targets: [...targets.slice(start), ...targets.slice(0, start)] };
 }
-const navigationIds = new Set(['back', 'more', 'review', 'done', 'resume', 'stop', 'pause', 'all-categories', 'row:navigation', 'row:rows', 'char: ', 'erase', 'context-set:general', 'keyboard-layout']);
+const navigationIds = new Set(['back', 'more', 'review', 'done', 'resume', 'stop', 'pause', 'all-categories', 'row:navigation', 'row:rows', 'char: ', 'erase', 'context', 'neutral-replies', 'context-set:general', 'keyboard-layout']);
 export function choiceSections(model: Model) {
   const list = choices(model);
   const overview = model.screen.name === 'keyboard' && (model.screen.value ?? 'rows') === 'rows' && !model.repair && !model.expansion.editing;
@@ -75,18 +87,18 @@ export function words(text: string) {
 export function choices(s: Model): Choice[] {
   const screen = s.screen, page = screen.page ?? 0;
   switch (screen.name) {
-    case 'compose': return [c('phrases', 'Phrases'), c('spell', 'Spell'),
-      c('expand', 'Expand my words', !canExpand(s), 'Start with your own keywords'), c('context', 'Context', false, contextOptions.find(option => option.id === s.context)?.name ?? 'General'),
+    case 'compose': return [c('phrases', 'Phrases'), c('spell', 'Spell'), c('listen', 'Listen'),
+      c('expand', 'Expand my words', !canExpand(s), expansionHint(s)), c('context', 'Change context', false, contextOptions.find(option => option.id === s.context)?.name ?? 'General'),
       ...(!s.draft.trim() && s.listenedContext ? [c('neutral-replies', 'Neutral replies', false, 'Fixed options · no inferred answer')] : []),
       c('review', 'Review message', !s.draft.trim()), more()];
     case 'neutral-replies': return [...neutralReplies.map((text, i) => c(`neutral:${i}`, text)), back()];
     case 'listening': return [...(s.listen.phase === 'consent' ? [c('listen-consent', 'Speaker agrees · Continue', !s.cloud.consent)] : s.listen.phase === 'ready' ? [c('listen-start', 'Start recording', !s.cloud.consent)] : s.listen.phase === 'recording' ? [c('listen-stop', 'Stop recording')] : s.listen.phase === 'transcript' ? [c('listen-accept', 'Use as conversation context'), c('listen-retry', 'Record again')] : s.listen.phase === 'error' ? [c('listen-retry', 'Try again')] : []), c('listen-cancel', 'Cancel listening')];
-    case 'context': return [...contextOptions.map(option => c(`context-set:${option.id}`, option.name, false, (s.context === option.id ? 'Selected · ' : '') + option.description)), back()];
-    case 'expansion': return [...(s.expansion.result?.status === 'candidate' ? [c('accept-expansion', 'Review this wording'), c('edit-expansion', 'Edit candidate')] : []),
+    case 'context': return [...contextOptions.map(option => c(`context-set:${option.id}`, option.name, false, (s.stack.length && s.context === option.id ? 'Selected · ' : '') + option.description)), ...(s.stack.length ? [back()] : [])];
+    case 'expansion': return [...(s.expansion.result?.status === 'candidate' ? [c('accept-expansion', 'Use this wording'), c('edit-expansion', 'Edit')] : []),
       ...(s.expansion.result?.status === 'clarify' ? s.expansion.result.clarificationChoices.filter(text => text !== 'Keep my words').map((text, i) => c(`clarify-expansion:${i}`, text)) : []),
       c('keep-words', 'Keep my words'), ...(s.expansion.state !== 'loading' ? [c('retry-expansion', 'Try another', !canExpand(s))] : []), back()];
     case 'categories': return [...Object.keys(phrases).map(x => c(`category:${x}`, x)), back(), more()];
-    case 'phrases': return [...phraseList(screen.value!)!.map((x, i) => c(`phrase:${i}`, x)),
+    case 'phrases': return [...phraseList(screen.value!, s.context)!.map((x, i) => c(`phrase:${i}`, x)),
       ...(screen.value === 'Quick phrases' ? [c('all-categories', 'All categories')] : []), back(), more()];
     case 'repair': {
       const list = words(s.draft);
@@ -150,7 +162,7 @@ export function choices(s: Model): Choice[] {
   }
 }
 export function title(s: Model): string {
-  const names: Record<Screen['name'], string> = { compose: 'Make your message', categories: 'Choose a category', phrases: s.screen.value ?? 'Phrases',
+  const names: Record<Screen['name'], string> = { compose: 'Make your message', categories: 'Choose a category', phrases: s.screen.value === 'Quick phrases' && s.context !== 'general' ? `${contextOptions.find(option => option.id === s.context)?.name ?? 'Your'} phrases` : s.screen.value ?? 'Phrases',
     'neutral-replies': 'Neutral replies', listening: 'Listening', context: 'Communication context', expansion: s.expansion.result?.status === 'clarify' ? 'One clarification' : 'Inspect expanded wording', keyboard: s.expansion.editing ? 'Edit candidate only' : s.repair ? 'Correct this word' : 'Spell your message', repair: 'Choose a word to correct', review: 'Review before speaking', more: 'More controls',
     settings: 'Your settings', values: `Choose ${s.screen.value}`, voices: 'System voices', 'premium-voices': 'ElevenLabs voices', 'voice-detail': candidateVoice(s)?.name ?? 'Voice unavailable', assist: 'Optional suggestions', 'assist-context': 'Fictional conversation', suggestions: 'Suggestions', reader: 'Read your message', clear: 'Start a new message?',
     paused: 'Scanning paused', speaking: s.authorization?.preview ? 'Voice preview' : 'Your approved message', complete: 'Message playback ended', 'speech-error': 'Speech stopped' };
@@ -215,7 +227,7 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id === 'all-categories') go(s, { name: 'categories' });
   else if (id === 'home') home(s);
   else if (id.startsWith('category:')) go(s, { name: 'phrases', value: id.slice(9) });
-  else if (id.startsWith('phrase:')) { editDraft(s, s.draft + phraseList(s.screen.value!)![Number(id.slice(7))]); s.provenance = 'Your words'; home(s); }
+  else if (id.startsWith('phrase:')) { editDraft(s, s.draft + phraseList(s.screen.value!, s.context)![Number(id.slice(7))]); s.provenance = 'Your words'; home(s); }
   else if (id === 'spell') { s.repair = null; go(s, { name: 'keyboard', value: 'rows' }); }
   else if (id === 'review') startReview(s);
   else if (id === 'listen') { s.listen = initialListening(); go(s, { name: 'listening' }); }
@@ -229,7 +241,7 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id === 'listen-accept') { s.listenedContext = s.listen.transcript; s.listen = initialListening(); s.expansion = initialExpansion(); home(s); s.notice = 'Conversation context accepted. Your words are unchanged.'; }
   else if (id === 'keyboard-layout') s.alphabetMode = s.alphabetMode === 'visible' ? 'grouped' : 'visible';
   else if (id === 'context') go(s, { name: 'context' });
-  else if (id.startsWith('context-set:')) { s.context = id.slice(12) as CommunicationContext; s.expansion = initialExpansion(); pop(s); }
+  else if (id.startsWith('context-set:')) { s.context = id.slice(12) as CommunicationContext; s.expansion = initialExpansion(); home(s); }
   else if (id === 'expand' || id === 'retry-expansion' || id.startsWith('clarify-expansion:')) {
     if (!canExpand(s)) return before;
     const clarification = id.startsWith('clarify-expansion:') ? s.expansion.result?.clarificationChoices.filter(text => text !== 'Keep my words')[Number(id.slice(18))] ?? '' : id === 'retry-expansion' ? s.expansion.answer : '';
