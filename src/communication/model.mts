@@ -1,3 +1,4 @@
+import { RELEASE_CAPABILITIES, FRONTEND_CLOUD_UNAVAILABLE } from '../release-capabilities.mts';
 import { contextOptions, type CommunicationContext, type ExpansionRequest, type ExpansionResult } from './expansion-contract.mts';
 import { initialCloud, PREVIEW_TEXT, type CloudState, type AssistRequest, type Suggestion } from './cloud-contract.mts';
 /** Authorship and navigation only. This module cannot generate input or play audio. */
@@ -33,8 +34,9 @@ const neutralReplies = ['Yes.', 'No.', 'Please repeat that.'] as const;
 export type ExpansionState = { request: ExpansionRequest | null; source: string; revision: number; result: ExpansionResult | null; state: 'idle' | 'loading' | 'ready' | 'failed'; error: string; answer: string; editing: boolean; buffer: string; undo: string[] };
 const initialExpansion = (): ExpansionState => ({ request: null, source: '', revision: 0, result: null, state: 'idle', error: '', answer: '', editing: false, buffer: '', undo: [] });
 const editingText = (s: Model) => s.expansion.editing ? s.expansion.buffer : s.repair?.buffer ?? s.draft;
-const canExpand = (s: Model) => !!s.draft.trim() && s.cloud.consent && s.cloud.gemini;
-const expansionHint = (s: Model) => !s.draft.trim() ? 'Add a few words first.'
+export const cloudServicesEnabled = (s: Model) => RELEASE_CAPABILITIES.cloudServices && s.cloud.backendEnabled !== false;
+const canExpand = (s: Model) => cloudServicesEnabled(s) && !!s.draft.trim() && s.cloud.consent && s.cloud.gemini;
+const expansionHint = (s: Model) => !cloudServicesEnabled(s) ? FRONTEND_CLOUD_UNAVAILABLE : !s.draft.trim() ? 'Add a few words first.'
   : !s.cloud.consent ? 'Enable fictional cloud demo in Companion setup.'
   : !s.cloud.gemini ? s.cloud.geminiReason || 'Gemini is unavailable. You can still spell and use phrases.'
   : 'Optional wording suggestion.';
@@ -55,15 +57,15 @@ export const contextPhrases: Record<CommunicationContext, readonly string[]> = {
 };
 const phraseList = (category: string, context: CommunicationContext) => category === 'Quick phrases' ? contextPhrases[context] : phrases[category];
 const c = (id: string, label: string, disabled = false, detail?: string): Choice => ({ id, label, disabled, detail });
-const speechAvailable = (s: Model) => !!s.settings.voice && (s.settings.provider === 'browser' || (s.cloud.consent && s.cloud.elevenlabs && s.cloud.voices.some(v => v.id === s.settings.voice && v.available)));
+const speechAvailable = (s: Model) => !!s.settings.voice && (s.settings.provider === 'browser' || (cloudServicesEnabled(s) && s.cloud.consent && s.cloud.elevenlabs && s.cloud.voices.some(v => v.id === s.settings.voice && v.available)));
 export const candidateVoice = (s: Model) => s.screen.name === 'voice-detail' ? s.cloud.voices.find(v => v.id === s.screen.value) : undefined;
-const candidateAvailable = (s: Model) => !!candidateVoice(s)?.available && s.cloud.consent && s.cloud.elevenlabs;
+const candidateAvailable = (s: Model) => cloudServicesEnabled(s) && !!candidateVoice(s)?.available && s.cloud.consent && s.cloud.elevenlabs;
 const back = () => c('back', 'Back');
 const more = () => c('more', 'More controls');
-export function initialModel(session: string): Model {
+export function initialModel(session: string, cloudBackendEnabled=RELEASE_CAPABILITIES.cloudServices): Model {
   return { draft: '', revision: 0, uiRevision: 0, undo: [], screen: { name: 'context' }, stack: [], notice: '', focusId: null,
     provenance: 'Your words', repair: null, upper: false, review: null, authorization: null, speech: 'Not spoken',
-    context: 'general', expansion: initialExpansion(), alphabetMode: 'visible', listenedContext: '', listen: initialListening(), lastPlayed: null, serial: 0, session, voices: [], cloud: initialCloud(), assistance: { request: null, revision: 0, state: 'idle', items: [], error: '' },
+    context: 'general', expansion: initialExpansion(), alphabetMode: 'visible', listenedContext: '', listen: initialListening(), lastPlayed: null, serial: 0, session, voices: [], cloud: initialCloud(cloudBackendEnabled), assistance: { request: null, revision: 0, state: 'idle', items: [], error: '' },
     settings: { pace: 1600, size: 100, voice: '', rate: 1, provider: 'browser' } };
 }
 /** The exact enabled targets rendered by the UI, with its requested starting target. */
@@ -87,12 +89,12 @@ export function words(text: string) {
 export function choices(s: Model): Choice[] {
   const screen = s.screen, page = screen.page ?? 0;
   switch (screen.name) {
-    case 'compose': return [c('phrases', 'Phrases'), c('spell', 'Spell'), c('listen', 'Listen'),
+    case 'compose': return [c('phrases', 'Phrases'), c('spell', 'Spell'), c('listen', 'Listen', !cloudServicesEnabled(s), !cloudServicesEnabled(s)?FRONTEND_CLOUD_UNAVAILABLE:undefined),
       c('expand', 'Expand my words', !canExpand(s), expansionHint(s)), c('context', 'Change context', false, contextOptions.find(option => option.id === s.context)?.name ?? 'General'),
       ...(!s.draft.trim() && s.listenedContext ? [c('neutral-replies', 'Neutral replies', false, 'Fixed options · no inferred answer')] : []),
       c('review', 'Review message', !s.draft.trim()), more()];
     case 'neutral-replies': return [...neutralReplies.map((text, i) => c(`neutral:${i}`, text)), back()];
-    case 'listening': return [...(s.listen.phase === 'consent' ? [c('listen-consent', 'Speaker agrees · Continue', !s.cloud.consent)] : s.listen.phase === 'ready' ? [c('listen-start', 'Start recording', !s.cloud.consent)] : s.listen.phase === 'recording' ? [c('listen-stop', 'Stop recording')] : s.listen.phase === 'transcript' ? [c('listen-accept', 'Use as conversation context'), c('listen-retry', 'Record again')] : s.listen.phase === 'error' ? [c('listen-retry', 'Try again')] : []), c('listen-cancel', 'Cancel listening')];
+    case 'listening': return [...(s.listen.phase === 'consent' ? [c('listen-consent', 'Speaker agrees · Continue', !cloudServicesEnabled(s) || !s.cloud.consent)] : s.listen.phase === 'ready' ? [c('listen-start', 'Start recording', !cloudServicesEnabled(s) || !s.cloud.consent)] : s.listen.phase === 'recording' ? [c('listen-stop', 'Stop recording')] : s.listen.phase === 'transcript' ? [c('listen-accept', 'Use as conversation context'), c('listen-retry', 'Record again', !cloudServicesEnabled(s))] : s.listen.phase === 'error' ? [c('listen-retry', 'Try again', !cloudServicesEnabled(s))] : []), c('listen-cancel', 'Cancel listening')];
     case 'context': return [...contextOptions.map(option => ({ ...c(`context-set:${option.id}`, option.name, false, option.description), selected: !!s.stack.length && s.context === option.id })), back()];
     case 'expansion': return [...(s.expansion.result?.status === 'candidate' ? [c('accept-expansion', 'Use this wording'), c('edit-expansion', 'Edit')] : []),
       ...(s.expansion.result?.status === 'clarify' ? s.expansion.result.clarificationChoices.filter(text => text !== 'Keep my words').map((text, i) => c(`clarify-expansion:${i}`, text)) : []),
@@ -133,22 +135,22 @@ export function choices(s: Model): Choice[] {
         ...(s.settings.provider === 'elevenlabs' && !speechAvailable(s) ? [c('fallback', 'Speak using system voice', !s.voices.length, 'Review again before approval.')] : []), c('edit', 'Make changes'), back(), more()];
     }
     case 'more': return [c('home', 'Your message', !!s.repair || s.expansion.editing, s.repair || s.expansion.editing ? 'Finish or cancel the correction first.' : undefined), c('undo', 'Undo', !(s.expansion.editing ? s.expansion.undo.length : s.repair ? s.repair.undo.length : s.undo.length)),
-      c('listen', 'Listen', false, 'Optional partner question · fictional demo'), c('reader', 'Read message', !s.draft), c('assist', 'Suggestions', false, 'Optional wording help'), c('settings', 'Settings'), c('clear', 'New message', !s.draft), c('pause', 'Pause scanning'), back()];
+      c('listen', 'Listen', !cloudServicesEnabled(s), cloudServicesEnabled(s)?'Optional partner question · fictional demo':FRONTEND_CLOUD_UNAVAILABLE), c('reader', 'Read message', !s.draft), c('assist', 'Suggestions', !cloudServicesEnabled(s), cloudServicesEnabled(s)?'Optional wording help':FRONTEND_CLOUD_UNAVAILABLE), c('settings', 'Settings'), c('clear', 'New message', !s.draft), c('pause', 'Pause scanning'), back()];
     case 'settings': return [c('value:pace', 'Scan pace', false, `${s.settings.pace / 1000} seconds`),
       c('value:size', 'Text size', false, `${s.settings.size}%`), c('voices', 'Voice', false, (s.settings.provider === 'elevenlabs' ? s.cloud.voices : s.voices).find(x => x.id === s.settings.voice)?.name ?? 'Choose a voice'),
       c('value:rate', 'Speech rate', false, `${s.settings.rate}×`), c('preview', 'Preview voice', !speechAvailable(s)), back(), more()];
     case 'values': return [...(screen.value === 'pace' ? [800, 1200, 1600, 2000, 3000] : screen.value === 'size' ? [100, 125, 150, 200] : s.settings.provider === 'elevenlabs' ? [0.75, 1, 1.2] : [0.75, 1, 1.25])
       .map(x => c(`set:${x}`, screen.value === 'pace' ? `${x / 1000} seconds` : screen.value === 'size' ? `${x}%` : `${x}×`)), back()];
-    case 'voices': return [c('premium-voices', 'ElevenLabs voices', false, 'Six selected voices'), ...s.voices.slice(page * 5, page * 5 + 5).map((x, i) => c(`voice:${i + page * 5}`, x.name, false, (s.settings.provider === 'browser' && s.settings.voice === x.id ? 'Selected · ' : '') + `${x.lang} · ${x.local ? 'Device voice — offline not verified' : 'May use network'}`)),
+    case 'voices': return [c('premium-voices', 'ElevenLabs voices', !cloudServicesEnabled(s), cloudServicesEnabled(s)?'Six selected voices':FRONTEND_CLOUD_UNAVAILABLE), ...s.voices.slice(page * 5, page * 5 + 5).map((x, i) => c(`voice:${i + page * 5}`, x.name, false, (s.settings.provider === 'browser' && s.settings.voice === x.id ? 'Selected · ' : '') + `${x.lang} · ${x.local ? 'Device voice — offline not verified' : 'May use network'}`)),
       c('next', 'Next voices', (page + 1) * 5 >= s.voices.length), c('previous', 'Previous voices', page === 0), back()];
-    case 'premium-voices': return [...s.cloud.voices.map((v, i) => c(`premium:${i}`, v.name, false,
+    case 'premium-voices': return [...s.cloud.voices.map((v, i) => c(`premium:${i}`, v.name, !cloudServicesEnabled(s),
       `${s.settings.provider === 'elevenlabs' && s.settings.voice === v.id ? 'Selected · ' : ''}${v.group} · ${v.description} · ${!v.available ? v.reason : !s.cloud.consent ? 'Enable fictional cloud demo in Companion setup' : !s.cloud.elevenlabs ? s.cloud.elevenReason : 'Ready for deliberate preview'}`)),
       c('voices', 'System voices'), back()];
     case 'voice-detail': return [c('preview', 'Preview voice', !candidateAvailable(s)),
       c('use-voice', 'Use this voice', !candidateAvailable(s)), c('back-to-voices', 'Back to voices')];
-    case 'assist': return [c('assist-context', 'Suggest a reply', !s.cloud.gemini || !s.cloud.consent, 'Choose a fictional question'),
-      c('assist-spelling', 'Check spelling', !s.cloud.gemini || !s.cloud.consent || !s.draft.trim()),
-      c('assist-wording', 'Suggest clearer wording', !s.cloud.gemini || !s.cloud.consent || !s.draft.trim()),
+    case 'assist': return [c('assist-context', 'Suggest a reply', !cloudServicesEnabled(s) || !s.cloud.gemini || !s.cloud.consent, 'Choose a fictional question'),
+      c('assist-spelling', 'Check spelling', !cloudServicesEnabled(s) || !s.cloud.gemini || !s.cloud.consent || !s.draft.trim()),
+      c('assist-wording', 'Suggest clearer wording', !cloudServicesEnabled(s) || !s.cloud.gemini || !s.cloud.consent || !s.draft.trim()),
       c('spell', 'Continue spelling'), c('phrases', 'Choose a phrase'), back()];
     case 'assist-context': return fictionalContexts.map((text, i) => c(`context:${i}`, text)).concat([back()]);
     case 'suggestions': return [...s.assistance.items.map((item, i) => c(`suggestion:${i}`, item.text, false, s.draft ? 'Optional suggestion · replaces draft; Undo is available' : 'Optional suggestion · editable before review')),
@@ -270,7 +272,7 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id === 'assist') go(s, { name: 'assist' });
   else if (id === 'assist-context') go(s, { name: 'assist-context' });
   else if (id === 'assist-spelling' || id === 'assist-wording' || id.startsWith('context:')) {
-    if (!s.cloud.consent || !s.cloud.gemini) return before;
+    if (!cloudServicesEnabled(s) || !s.cloud.consent || !s.cloud.gemini) return before;
     const kind = id === 'assist-spelling' ? 'spelling_correction' : id === 'assist-wording' ? 'wording_alternative' : 'contextual_response';
     s.assistance = { request: { id: `${s.session}:${++s.serial}`, text: s.draft, context: id.startsWith('context:') ? fictionalContexts[Number(id.slice(8))] : '', kind, synthetic: true },
       revision: s.revision, state: 'loading', items: [], error: '' };
@@ -340,7 +342,7 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   } else if (id === 'back-to-voices') { pop(s); }
   else if (id === 'use-voice') {
     const voice = candidateVoice(s);
-    if (!voice?.available || !s.cloud.elevenlabs || !s.cloud.consent) return before;
+    if (!cloudServicesEnabled(s) || !voice?.available || !s.cloud.elevenlabs || !s.cloud.consent) return before;
     if (s.settings.provider === 'browser') s.settings.systemVoice = s.settings.voice;
     s.settings.provider = 'elevenlabs'; s.settings.voice = voice.id;
     const rateAdjusted = ![0.75, 1, 1.2].includes(s.settings.rate);
@@ -399,13 +401,13 @@ export function withCloudDefaults(before: Model): Model {
 }
 export function finishAssistance(before: Model, request: AssistRequest, items: Suggestion[], error = ''): Model {
   if (before.screen.name !== 'suggestions' || before.assistance.request?.id !== request.id || before.revision !== before.assistance.revision
-    || before.draft !== request.text || !before.cloud.consent) return before;
+    || before.draft !== request.text || !cloudServicesEnabled(before) || !before.cloud.consent) return before;
   return { ...before, uiRevision: before.uiRevision + 1, assistance: { ...before.assistance, request: null, state: error ? 'failed' : 'ready', items: error ? [] : items, error } };
 }
 
 export function finishExpansion(before: Model, request: ExpansionRequest, result: ExpansionResult | null, error = ''): Model {
   if (before.screen.name !== 'expansion' || before.expansion.request?.id !== request.id || before.revision !== before.expansion.revision
-    || before.draft !== request.text || before.context !== request.context || before.listenedContext !== (request.transcript ?? '') || !before.cloud.consent) return before;
+    || before.draft !== request.text || before.context !== request.context || before.listenedContext !== (request.transcript ?? '') || !cloudServicesEnabled(before) || !before.cloud.consent) return before;
   return { ...before, uiRevision: before.uiRevision + 1, expansion: { ...before.expansion, request: null, state: error ? 'failed' : 'ready', result: error ? null : result, error } };
 }
 

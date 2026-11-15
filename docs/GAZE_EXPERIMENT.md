@@ -2,7 +2,7 @@
 
 ## Current result and release gate
 
-Implementation status: **Experiment failed, switch-only path preserved.**
+Implementation status: **Earlier formal accuracy runs failed. The new horizontal classifier and isolated pointer/switch sandbox await physical acceptance; production scanning remains switch-only.**
 
 The latest owner-operated six-trial run completed all six trials with **1 correct, 0 incorrect and 5 abstained**, no interruptions and no measured geometry changes. The owner observed the Left/Right indicator responding to their eyes, then intentionally changed tabs; the subsequent page-hidden camera shutdown was expected privacy behavior, not a trial tracking failure. Frozen run evidence contains 175 face detections and finite predictions, 128 worker-accepted predictions, a 154.6 ms median prediction interval and 25.7 ms median inference. After orientation, mean raw x was 196.1 px for Left and 1328.8 px for Right in a 1440 px viewport. Twenty worker-accepted predictions were rejected by the rectangle classifier. Horizontal separation is promising, but reliable acceptance is unproven.
 
@@ -16,7 +16,7 @@ That interrupted run recorded 47 camera frames, 47 face detections and 47 finite
 
 A later developer Chrome observation reproduced a **56 CSS px browser content-area change** while activating the gaze tab: inner height 812 → 756 with outer height fixed at 812. The `window.resize` event was classified as browser-chrome/content-viewport change, and the screenshot showed the debugging infobar occupying that 56 px. This demonstrates a mechanism of the same magnitude; it does **not** prove the exact cause of the earlier 756 → 812 interruption. The final owner repeat must begin only after browser automation ends, so automation attachment or banner changes do not invalidate an early-started calibration.
 
-Stage A remains isolated at `/gaze-experiment`. Normal SMV has no gaze scanner preference, synthetic input or camera acquisition on load. Stage B is disabled. The focused geometry, interruption-accounting and diagnostic changes below are implemented; 269 tests, typecheck and production build passed. A fresh owner diagnostic after these changes is pending. Neither improved accuracy nor faster communication is claimed. Six diagnostic trials cannot substitute for the required 30-trial acceptance run.
+Stage A remains isolated at `/gaze-experiment`. Normal SMV has no gaze scanner preference, synthetic input or camera acquisition on load. Production Stage B is disabled. The focused geometry, interruption-accounting and diagnostic changes below are implemented; 269 tests, typecheck and production build passed. A fresh owner diagnostic after these changes is pending. Neither improved accuracy nor faster communication is claimed. Six diagnostic trials cannot substitute for the required 30-trial acceptance run.
 
 Devpost remains DRAFT, 2/5 steps complete, with required story, tags, repository link, additional-info answers and acknowledgments missing. Current source is local only. If submission is still incomplete at 6:00 AM Eastern, stop experimental development and produce the submission handoff; preserve the earlier detailed-rules 8:00 AM deadline. No push, deployment, DNS change or Devpost edit/submission occurred.
 
@@ -28,7 +28,31 @@ Page hiding, page exit and true viewport geometry changes stop the camera. Numer
 
 Calibration uses the shipped recommended 17-point pattern, five face-present/eyes-open/finite-pose frames per point. After 1.4 seconds to orient, a point advances only when all five samples are accepted. Timed capture does not prove fixation. All 85 samples and successful library fitting are required before tracking. The calibration view keeps a visible Stop control and keyboard focus containment. Calibration re-entry, capture errors, stale asynchronous completions and model timeout cannot acquire speech or input authority.
 
-No gaze module imports the communication model, switch reducer, serial adapter, speech controller or AI runtime. It cannot dispatch a click, DOWN/UP, text, wording approval or speech authorization. The accepted input state machine, CDC protocol and firmware remain unchanged. There is no gaze-assisted physical-switch acceptance or task-efficiency result because scanner integration is not active.
+The isolated sandbox reuses the unchanged switch reducer and verified serial adapter. Gaze proposes only a target; actual serial DOWN captures it and matching valid UP commits one fictional sandbox action. No gaze module imports the communication model, speech controller or AI runtime, dispatches synthetic clicks or hardware messages, or changes production navigation/messages. The accepted input state machine, CDC protocol and firmware remain unchanged. There is no gaze-assisted physical-switch acceptance or task-efficiency result; production scanner integration remains disabled.
+
+## Pointer and physical-switch sandbox follow-up
+
+The owner reports **Left when looking left, None in the middle, Right when looking right** after calibration at the horizontal-classifier checkpoint. This is owner-observed directional behavior, not a completed six-trial result. The earlier 1/6 score predates that classifier and is not its score. No classification thresholds were changed in this follow-up.
+
+`GazeSandbox.tsx` and its named export now exist. Chrome briefly showed an unresolved import while the parent import had been added before the new component was finished; the completed source resolves and renders. The pointer has a charcoal center and translucent neutral halo, accepts only worker-approved finite on-screen predictions, and never moves an OS cursor. Display-only smoothing is separate from target acceptance. Raw accepted position, stabilized position, candidate, sample count, dispersion and rejection reason are shown without invented confidence percentages. Calibration loss, stale/invalid predictions and Stop hide the pointer.
+
+The four sandbox targets use actual fully visible DOM rectangles with a 12 px interior margin; gaps/edges abstain. This is a separate four-target experiment, not a change to the two-region horizontal classifier. Existing 600 ms/five-sample acquisition, 80 px dispersion, 350 ms freshness and 800 ms target-switch hysteresis remain. The physical-only actions show fictional phrases, an alphabet preview, the sandbox start, or one bounded 80 px preview scroll. There is no message editing or speech. Gray gaze preview, charcoal switch focus and a held double outline are distinct.
+
+A press freezes its target. Changed candidate alone cannot retarget the held press; lost/stale tracking, geometry changes, occlusion, focus/visibility loss and transport cancellation retire it without action. Reconnection requires explicit Connect and genuine switch synchronization. Camera-off recovery uses explicit switch-only mode and a fresh connection. The initial chooser is companion-assisted, as in the established physical architecture. Ports must be independently identified; the currently observed `/dev/cu.usbmodem103` is CDC2 data/interface 3 and must be rechecked after USB changes.
+
+Developer Chrome checks observed the repaired experiment and main interface rendering without a Vite overlay, four 678.5 × 97.29 CSS px targets visible in a 1440 × 756 viewport, no pointer with camera off, and no action after a mouse click on a sandbox tile. These checks do not establish actual gaze following or physical button acceptance. Automated checks exercise pointer freshness/geometry and the unchanged reducer's capture, release, interruption and recovery through the sandbox adapter boundary. No camera images were stored.
+
+The complete repair/release suite passed **324 tests**, typecheck and both local/frontend-demo builds. The frontend build excludes this experiment entirely. These automated outcomes do not replace the pending owner physical check.
+
+### Next owner check (short sandbox run, not 30 trials)
+
+1. Begin only after the final browser handoff. Keep Chrome window/zoom fixed and wait for **Geometry: settled for 2 seconds**. Select **Switch sandbox** with camera off, then Start eye gaze → Start calibration; follow all 17 points.
+2. Look between the four target centers. Observe the estimated pointer, candidate text/background and stability evidence. Looking alone must leave **Accepted physical actions: 0**. If useful previews cannot stabilize, stop and report that result; do not lower thresholds to complete the test.
+3. With the button released, verify the CDC2 data port, check the port confirmation, and choose Connect Pico. Look at Phrases; after candidate/switch focus appear, press and release once. Expect exactly one fictional preview action. Repeat for Spell, Back and Scroll; each needs its own cycle.
+4. Hold on one stable target, then look at another while tracking remains valid: the captured target must stay frozen and release may commit only that captured target once. If tracking is lost, the press must cancel and require reconnect. Any unintended action is a failure; stop immediately.
+5. Stop eye gaze: camera/pointer/candidate must disappear, with no action. Choose **Switch-only scan**, reconnect for fresh synchronization, and confirm one action through the physical switch with camera off. Pause/disconnect when finished. Report target-following, the action count, failures and whether recovery worked.
+
+Stop this experiment rather than delay release/submission preparation. Do not infer communication speed or reliability from this small run.
 
 ## Post-pilot diagnostic corrections
 
@@ -58,7 +82,7 @@ Owner repeat, currently pending:
 3. If the diagnostic justifies proceeding, repeat the full 30-trial pilot. At least 27/30 correct remains the proposed gate, with abstentions included.
 4. Stop eye gaze and verify Camera off. Return to switch-only SMV; its established physical selection, silent Review, fresh Speak and Stop remain the communication path.
 
-Do not claim gaze-assisted selection or perform a switch-only/gaze-assisted efficiency comparison until Stage B is safely implemented after usable real-camera evidence. No speed benefit is currently measured.
+Do not claim gaze-assisted selection or perform a switch-only/gaze-assisted efficiency comparison until Stage B is safely implemented after usable real-camera evidence. The sandbox follow-up above now permits isolated fictional physical-selection tests, without production integration. No speed benefit is currently measured.
 
 ## Technology, license and local assets
 

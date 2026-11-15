@@ -63,6 +63,7 @@ h3 { font-size: 20px; font-weight: 600; margin-block: 24px 12px; }
 .exact { white-space: pre-wrap; overflow-wrap: anywhere; }
 footer { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 14px; color: var(--muted); }
 footer > p { margin-right: auto; }
+footer > a { color: inherit; text-underline-offset: 4px; }
 .setup-trigger { font-size: 14px; min-height: 44px; border-color: transparent; background: transparent; padding: 8px 12px; text-decoration: underline; text-underline-offset: 4px; }
 /* The footer is a quiet text control; only keyboard focus gets a visible ring. */
 .setup-trigger:focus:not(:focus-visible) { outline: none; }

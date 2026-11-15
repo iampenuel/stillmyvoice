@@ -28,3 +28,6 @@ playwright-report/
 
 # Reproducibly prepared local gaze model, WASM, worker and license assets.
 /public/gaze/
+
+# Future local Vercel project metadata and pulled environments stay private.
+/.vercel/

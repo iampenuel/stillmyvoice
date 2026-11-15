@@ -1,3 +1,4 @@
+import { RELEASE_CAPABILITIES, requireCloudServices } from '../release-capabilities.mts';
 /** Ephemeral bounded recording. No storage, network, input or speech capability. */
 export type Recording = { blob: Blob; durationMs: number };
 type Stream = Pick<MediaStream, 'getTracks'>;
@@ -51,9 +52,9 @@ export function createRecording(deps: Dependencies, event: (event: 'limit' | 'er
     }, stop, cancel,
   };
 }
-export function browserRecording(event: (event: 'limit' | 'error') => void) {
+export function browserRecording(event: (event: 'limit' | 'error') => void, cloudAllowed=RELEASE_CAPABILITIES.cloudServices) {
   return createRecording({
-    getStream: () => navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
+    getStream: () => { requireCloudServices(cloudAllowed); return navigator.mediaDevices.getUserMedia({ audio: true, video: false }); },
     recorder: stream => {
       const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'].find(type => MediaRecorder.isTypeSupported(type));
       if (!mimeType) throw Error('No supported recording format');

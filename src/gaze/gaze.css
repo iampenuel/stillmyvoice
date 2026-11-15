@@ -60,3 +60,27 @@
 .gaze-geometry-evidence pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
 .gaze-experiment[data-trial-active="true"] .gaze-diagnostics details,
 .gaze-experiment[data-trial-active="true"] .gaze-geometry-evidence { visibility:hidden; }
+
+/* Estimated gaze is a local visual aid, never a click or OS cursor. */
+.gaze-pointer { position:fixed; z-index:30; width:30px; height:30px; border-radius:50%; background:rgba(70,70,70,.14); transform:translate(-50%,-50%); pointer-events:none; display:grid; place-items:center; transition:left 80ms linear,top 80ms linear; }
+.gaze-pointer span { width:6px; height:6px; border-radius:50%; background:#252525; }
+.gaze-pointer-readout { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; min-height:38px; margin:0; font-size:12px; }
+.gaze-pointer-readout dt { color:var(--muted); } .gaze-pointer-readout dd { margin:0; font-variant-numeric:tabular-nums; }
+.gaze-experiment-modes { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; font-size:12px; }
+.gaze-experiment-modes button { min-height:30px; padding:4px 10px; font-size:13px; }
+.gaze-experiment-modes button[aria-pressed="true"] { background:#e6e6e6; border-color:#555; }
+.gaze-test-region[data-candidate="true"] { background:#e8e8e8; }
+.gaze-preview-label { position:absolute; bottom:12px; right:14px; font-size:13px; color:#333; }
+@media(prefers-reduced-motion:reduce) { .gaze-pointer { transition:none; } }
+@media(max-width:700px) { .gaze-pointer-readout { grid-template-columns:repeat(2,minmax(0,1fr));min-height:68px; } }
+
+/* The sandbox keeps its four targets and bounded preview visible together. */
+.gaze-experiment[data-mode="sandbox"] { gap:8px; }
+.gaze-experiment[data-mode="sandbox"] .gaze-heading .wordmark { font-size:30px; }
+.gaze-experiment[data-mode="sandbox"] .gaze-heading h1 { font-size:24px; }
+.gaze-experiment[data-mode="sandbox"] .gaze-heading p { max-width:none; font-size:13px; }
+.gaze-experiment[data-mode="sandbox"] .gaze-readouts { display:none; }
+.gaze-experiment[data-mode="sandbox"] .gaze-controls > .small { min-height:1.4em; font-size:13px; }
+.gaze-experiment[data-mode="sandbox"] .gaze-actions button { min-height:40px; padding:8px 12px; font-size:15px; }
+.gaze-experiment[data-mode="sandbox"] .gaze-sandbox-status { min-height:1.4em; }
+.gaze-experiment[data-mode="sandbox"] .gaze-sandbox-preview { height:80px; }

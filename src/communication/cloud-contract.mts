@@ -1,3 +1,4 @@
+import { RELEASE_CAPABILITIES, FRONTEND_CLOUD_UNAVAILABLE } from '../release-capabilities.mts';
 /** Public voice identities verified against the owner's account metadata on 2026-11-14.
  * Availability is rechecked server-side; this catalog never authorizes synthesis. */
 export const approvedVoices = [
@@ -14,7 +15,7 @@ export type PremiumVoice = { id: string; name: string; description: string; grou
 export type AssistKind = 'contextual_response' | 'spelling_correction' | 'clarification' | 'wording_alternative' | 'continuation';
 export type Suggestion = { text: string; kind: AssistKind };
 export type AssistRequest = { id: string; text: string; context: string; kind: AssistKind; synthetic: true };
-export type CloudState = { consent: boolean; refresh: number; elevenlabs: boolean; gemini: boolean; elevenReason: string; geminiReason: string; voices: PremiumVoice[] };
-export const initialCloud = (): CloudState => ({ consent: false, refresh: 0, elevenlabs: false, gemini: false,
-  elevenReason: 'Account checks pending', geminiReason: 'Free-tier checks pending',
-  voices: approvedVoices.map(v => ({ ...v, available: false, reason: 'Availability not checked', auditioned: false })) });
+export type CloudState = { backendEnabled: boolean; consent: boolean; refresh: number; elevenlabs: boolean; gemini: boolean; elevenReason: string; geminiReason: string; voices: PremiumVoice[] };
+export const initialCloud = (backendEnabled=RELEASE_CAPABILITIES.cloudServices): CloudState => ({ backendEnabled, consent: false, refresh: 0, elevenlabs: false, gemini: false,
+  elevenReason: backendEnabled?'Account checks pending':FRONTEND_CLOUD_UNAVAILABLE, geminiReason: backendEnabled?'Free-tier checks pending':FRONTEND_CLOUD_UNAVAILABLE,
+  voices: approvedVoices.map(v => ({ ...v, available: false, reason: backendEnabled?'Availability not checked':FRONTEND_CLOUD_UNAVAILABLE, auditioned: false })) });

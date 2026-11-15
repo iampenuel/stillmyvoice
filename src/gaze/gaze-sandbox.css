@@ -1,0 +1,27 @@
+/* Isolated experiment only; production communication selectors are untouched. */
+.gaze-sandbox { display:grid; gap:8px; min-width:0; }
+.gaze-sandbox-heading { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 20px; }
+.gaze-sandbox-heading h2 { font-size:18px; }
+.gaze-sandbox-heading p { color:var(--muted); font-size:13px; margin:0; }
+.gaze-sandbox-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; font-size:13px; }
+.gaze-sandbox-controls label { display:flex; align-items:center; gap:8px; }
+.gaze-sandbox-controls select { min-height:44px; max-width:230px; font:inherit; color:inherit; background:white; border:1px solid var(--line); border-radius:4px; padding:4px 6px; }
+.gaze-sandbox-controls button { min-height:44px; padding:6px 10px; font-size:13px; }
+.gaze-sandbox-port-check { max-width:330px; }
+.gaze-sandbox-controls input[type="checkbox"] { width:20px; height:20px; }
+.gaze-sandbox-status { min-height:2.9em; margin:0; font-size:13px; line-height:1.4; color:var(--muted); }
+.gaze-sandbox-targets { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.gaze-sandbox-target { min-width:0; min-height:96px; display:flex; flex-direction:column; justify-content:center; gap:4px; padding:10px 16px; border:1px solid var(--line); border-radius:8px; background:white; cursor:default; }
+.gaze-sandbox-title { font-size:21px; font-weight:600; }
+.gaze-sandbox-detail { font-size:13px; color:var(--muted); }
+.gaze-sandbox-target-state { min-height:18px; font-size:12px; line-height:18px; color:var(--focus-ink); }
+.gaze-sandbox-target[data-candidate="true"] { background:#f2f2f2; border-color:#626262; }
+.gaze-sandbox-target[data-scan="true"] { outline:3px solid var(--focus-ink); outline-offset:3px; border-color:var(--focus-ink); }
+.gaze-sandbox-target[data-held="true"] { outline:4px double var(--focus-ink); outline-offset:3px; border-color:var(--focus-ink); }
+.gaze-sandbox-feedback { min-height:20px; font-size:13px; }
+.gaze-sandbox-preview { height:100px; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; padding:8px 12px; background:white; border:1px solid var(--line); border-radius:6px; font-size:14px; }
+.gaze-sandbox-preview p { margin:6px 0; }
+.gaze-sandbox-preview ul { margin:6px 0; padding-left:24px; }
+.gaze-sandbox-history { font-size:13px; }
+.gaze-sandbox-history summary { padding-block:6px; }
+@media(max-width:700px) { .gaze-sandbox-targets { gap:10px; } .gaze-sandbox-target { padding:10px; min-height:110px; } .gaze-sandbox-controls { align-items:flex-start; } }

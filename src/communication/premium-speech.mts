@@ -1,10 +1,11 @@
+import { RELEASE_CAPABILITIES, requireCloudServices } from '../release-capabilities.mts';
 import type { Authorization } from './model.mts';
 import type { SpeechEngine } from './speech.mts';
 type Player = Pick<HTMLAudioElement, 'src' | 'onplaying' | 'onended' | 'onerror' | 'play' | 'pause' | 'load'>;
 type Dependencies = { request: (auth: Authorization, signal: AbortSignal) => Promise<Blob>;
   player: () => Player; url: (blob: Blob) => string; revoke: (url: string) => void };
 /** No auto retry, queue or local fallback. A new approval is required after failure. */
-export function premiumSpeechEngine(deps: Dependencies): SpeechEngine {
+export function premiumSpeechEngine(deps: Dependencies, cloudAllowed=RELEASE_CAPABILITIES.cloudServices): SpeechEngine {
   let generation = 0, abort: AbortController | null = null, player: Player | null = null, url: string | null = null;
   const cancel = () => {
     generation++; abort?.abort(); abort = null;
@@ -15,6 +16,7 @@ export function premiumSpeechEngine(deps: Dependencies): SpeechEngine {
     cancel(); const current = generation; const controller = new AbortController(); abort = controller;
     void (async () => {
       try {
+        requireCloudServices(cloudAllowed);
         const blob = await deps.request(auth, controller.signal);
         if (current !== generation || controller.signal.aborted) return;
         url = deps.url(blob); player = deps.player(); player.src = url;
@@ -32,6 +34,7 @@ export function browserPremiumSpeechEngine(): SpeechEngine {
   return premiumSpeechEngine({
     player: () => new Audio(), url: blob => URL.createObjectURL(blob), revoke: url => URL.revokeObjectURL(url),
     request: async (authorization, signal) => {
+      requireCloudServices();
       const response = await fetch('/api/speech', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ authorization, cloudConsent: true }), signal: AbortSignal.any([signal, AbortSignal.timeout(14_000)]) });
       if (!response.ok || !response.headers.get('content-type')?.startsWith('audio/')) throw Error('Premium speech unavailable');

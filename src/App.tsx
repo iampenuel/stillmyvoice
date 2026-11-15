@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { FRONTEND_DEMO, FRONTEND_CLOUD_UNAVAILABLE } from './release-capabilities.mts';
 import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, withCloudDefaults, speechEvent, title, candidateVoice, alphabetRows, type Model, type Choice } from './communication/model.mts';
 import { InputCoordinator } from './communication/input-coordinator.mts';
 import { browserSpeechEngine, routeSpeechEngine, SpeechController } from './communication/speech.mts';
@@ -323,7 +324,7 @@ export function App() {
         </div>
       </section>
     </div>
-    <footer><p>Draft kept in this tab. Reloading clears it.</p><button type="button" className="setup-trigger" onClick={openSetup}>Companion setup</button>
+    <footer><p>Draft kept in this tab. Reloading clears it.</p>{FRONTEND_DEMO ? <a href="/release-info.html">Source and license</a> : null}<button type="button" className="setup-trigger" onClick={openSetup}>Companion setup</button>
       {coordinator.current?.mode === 'simulation' ? <button ref={simButton} type="button" className="simulation-switch"
         onPointerDown={e => { if (e.button === 0) { e.currentTarget.setPointerCapture(e.pointerId); simulationDown('pointer:' + e.pointerId); } }}
         onPointerUp={e => simulationUp('pointer:' + e.pointerId)} onPointerCancel={() => coordinator.current?.stop('Simulation pointer cancelled')}
@@ -349,13 +350,14 @@ export function App() {
       }}>Connect Pico</button>
         <button type="button" onClick={() => coordinator.current?.stop('Explicit disconnect')}>Pause / disconnect Pico</button></div>
       <h3>Optional cloud demo</h3>
-      <label><input type="checkbox" checked={model.cloud.consent} onChange={event => {
+      {FRONTEND_DEMO ? <p>{FRONTEND_CLOUD_UNAVAILABLE}</p> : null}
+      <label><input type="checkbox" checked={model.cloud.consent} disabled={FRONTEND_DEMO} onChange={event => {
         speech.current?.cancel(); const before = current.current;
         commit({ ...before, uiRevision: before.uiRevision + 1, authorization: null,
           cloud: { ...before.cloud, consent: event.target.checked }, listen: { ...before.listen, session: null, phase: 'consent' }, expansion: { ...before.expansion, request: null }, assistance: { ...before.assistance, request: null, items: [] } });
       }} /> I am using fictional content and permit deliberate speech/suggestion requests to ElevenLabs and Google. No real private communication.</label>
       <p>ElevenLabs: {model.cloud.elevenReason}. Gemini: {model.cloud.geminiReason}. Selecting a voice or suggestion never starts speech.</p>
-      <button type="button" onClick={() => { const before = current.current; commit({ ...before, cloud: { ...before.cloud, refresh: (before.cloud.refresh ?? 0) + 1 } }); }}>Refresh cloud status</button>
+      <button type="button" disabled={FRONTEND_DEMO} onClick={() => { const before = current.current; commit({ ...before, cloud: { ...before.cloud, refresh: (before.cloud.refresh ?? 0) + 1 } }); }}>Refresh cloud status</button>
       <h3>Local simulation</h3><p>Simulation uses the same selection safeguards. It is not physical test evidence.</p>
       <button type="button" disabled={coordinator.current?.mode === 'hardware' || coordinator.current?.busy} onClick={() => {
         setup.current?.close(); coordinator.current?.simulate(); requestAnimationFrame(() => simButton.current?.focus());

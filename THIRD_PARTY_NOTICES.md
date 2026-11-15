@@ -26,7 +26,7 @@ Versions and license metadata were read from installed package manifests and pac
 | Google Gen AI SDK | 3.3.0 | Apache-2.0 | https://github.com/googleapis/js-genai |
 | React / React DOM / Node type definitions | 19.3.0 / 19.3.0 / 24.19.2 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 
-Node.js and Chromium provide the development/runtime environment. Raspberry Pi Pico hardware and Adafruit CircuitPython provide the physical input platform; CircuitPython firmware and libraries were not reimplemented or bundled in the application build. ElevenLabs and Google Gemini are external services subject to their own terms; no voice ownership or provider endorsement is claimed. No gaze or microphone library is installed.
+Node.js and Chromium provide the development/runtime environment. Raspberry Pi Pico hardware and Adafruit CircuitPython provide the physical input platform; CircuitPython firmware and libraries were not reimplemented or bundled in the application build. ElevenLabs and Google Gemini are external services subject to their own terms; no voice ownership or provider endorsement is claimed. The subsequently authorized gaze dependencies are listed below; microphone recording uses browser APIs.
 
 The lockfile records transitive dependencies. Package license files are retained in installed dependencies; an actual redistributed release must retain applicable license/notice obligations. The owner selected AGPLv3-or-later for the combined application during the November 15 gaze task. AI-assisted development must be disclosed and explained accurately in the submission.
 

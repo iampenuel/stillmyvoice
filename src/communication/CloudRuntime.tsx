@@ -1,12 +1,14 @@
+import { requireCloudServices } from '../release-capabilities.mts';
 import { useEffect } from 'react';
 import { cloudFailure, requestStillCurrent } from './cloud-error.mts';
-import { finishAssistance, finishExpansion, type Model } from './model.mts';
+import { cloudServicesEnabled, finishAssistance, finishExpansion, type Model } from './model.mts';
 import { isExpansionResult, type ExpansionResult } from './expansion-contract.mts';
-import { approvedVoices, type PremiumVoice, type Suggestion } from './cloud-contract.mts';
+import { approvedVoices, initialCloud, type PremiumVoice, type Suggestion } from './cloud-contract.mts';
 
 type Props = { model: Model; current: { current: Model }; commit: (next: Model) => void; canUpdate: () => boolean };
 const active = () => document.hasFocus() && document.visibilityState === 'visible';
 async function json(path: string, signal: AbortSignal, body?: unknown) {
+  requireCloudServices();
   const response = await fetch(path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin',
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal });
   const text = await response.text(); if (text.length > 65536) throw Error('Invalid service response.');
@@ -25,6 +27,11 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
     };
     void (async () => {
       try {
+        if (!cloudServicesEnabled(current.current)) {
+          const disabled=initialCloud(false);
+          pending={backendEnabled:false,consent:false,elevenlabs:false,gemini:false,elevenReason:disabled.elevenReason,geminiReason:disabled.geminiReason,voices:disabled.voices};
+          apply(); return;
+        }
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]);
         const status = await json('/api/status', signal);
         const cloud = current.current.cloud;
@@ -47,7 +54,7 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
 
   const request = model.assistance.request;
   useEffect(() => {
-    if (!request) return;
+    if (!request || !cloudServicesEnabled(model)) return;
     const controller = new AbortController();
     let result: { items: Suggestion[]; error: string } | null = null;
     const apply = () => {
@@ -59,7 +66,7 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
       try {
         // Let parent lifecycle retirement run before starting retained work after HMR.
         if (!await requestStillCurrent(controller.signal, request.id, () => current.current.assistance.request?.id)) return;
-        if (!active() || !current.current.cloud.consent || !current.current.cloud.gemini) throw Error('Request canceled. Your words are kept.');
+        if (!cloudServicesEnabled(current.current) || !active() || !current.current.cloud.consent || !current.current.cloud.gemini) throw Error('Request canceled. Your words are kept.');
         const response = await json('/api/suggestions', AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), request);
         const items: unknown = response.suggestions;
         if (!Array.isArray(items) || items.length > 3 || !items.every(item => item && Object.keys(item).sort().join(',') === 'kind,text'
@@ -74,7 +81,7 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
   }, [request?.id]);
   const expansionRequest = model.expansion.request;
   useEffect(() => {
-    if (!expansionRequest) return;
+    if (!expansionRequest || !cloudServicesEnabled(model)) return;
     const controller = new AbortController();
     let pending: { result: ExpansionResult | null; error: string } | null = null;
     const apply = () => {
@@ -86,7 +93,7 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
       try {
         // Retained request state cannot be replayed before parent HMR cleanup retires it.
         if (!await requestStillCurrent(controller.signal, expansionRequest.id, () => current.current.expansion.request?.id)) return;
-        if (!active() || !current.current.cloud.consent || !current.current.cloud.gemini) throw Error('Request canceled. Your words are kept.');
+        if (!cloudServicesEnabled(current.current) || !active() || !current.current.cloud.consent || !current.current.cloud.gemini) throw Error('Request canceled. Your words are kept.');
         const result = await json('/api/expansion', AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), expansionRequest);
         if (!isExpansionResult(result)) throw Error('Gemini returned an invalid structured response. Your words are kept.');
         if (!controller.signal.aborted) { pending = { result, error: '' }; apply(); }

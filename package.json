@@ -16,7 +16,9 @@
     "api": "node server/index.mts",
     "prepare:gaze": "node scripts/prepare-gaze-assets.mts",
     "predev": "npm run prepare:gaze",
-    "prebuild": "npm run prepare:gaze"
+    "prebuild": "npm run prepare:gaze",
+    "build:demo": "tsc --noEmit && VITE_SMV_RELEASE_MODE=frontend-demo vite build --mode frontend-demo",
+    "preview:demo": "VITE_SMV_RELEASE_MODE=frontend-demo vite preview --mode frontend-demo --host 127.0.0.1 --port 4173 --strictPort"
   },
   "dependencies": {
     "@google/genai": "3.3.0",
