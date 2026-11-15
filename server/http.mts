@@ -54,6 +54,8 @@ export function createApiHandler(eleven: Eleven, gemini: Gemini) {
         const audio = await eleven.synthesize(payload.authorization, signal);
         signal.throwIfAborted();
         if (!res.destroyed) { res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(audio); }
+      } else if (req.url === '/api/expansion') {
+        send(res, 200, await gemini.expand(payload, signal));
       } else if (req.url === '/api/suggestions') {
         send(res, 200, { suggestions: await gemini.suggest(payload, signal) });
       } else send(res, 404, { error: 'NOT_FOUND' });

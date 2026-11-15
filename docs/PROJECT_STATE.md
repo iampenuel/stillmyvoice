@@ -1,4 +1,6 @@
-# Project state — cloud integration implemented; physical cloud acceptance pending
+# Project state — intent-first communication checkpoint
+
+Current INTENT-01 work supersedes the historical status paragraphs below. The owner confirmed hearing the exact “Please reposition me.” phrase once after the 96e483b physical repeat; Cecily preview/approved speech are owner-reported passes for that flow. LaSean's Flash v2.5 tuning is explicitly failed, while Flash v2 is fine-tuned. A server-only per-voice Flash v2 assignment preserves its identity; one 27-character live preview returned 22,195 audio bytes in 433 ms, without claiming human audibility. Other five voices retain Flash v2.5. Context and conservative keyword expansion are being verified; see [INTENT-01 evidence](HP26_INTENT_01.md).
 
 HP26-SMV-UX-VOICE-01 update: the owner reports hearing Cecily and successfully selecting the voice, while identifying the hidden Preview action. This confirms that exercised audible voice result, not completion of the remaining exact-phrase/Stop/Gemini acceptance script. A compact staged voice-detail state now offers Preview first, Use this voice, and Back to voices. Only Use changes the saved voice; preview never speaks the draft. Existing input/firmware remain unchanged. [Evidence and repeat script](HP26_UX_VOICE_01.md).
 

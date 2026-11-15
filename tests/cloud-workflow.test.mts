@@ -2,16 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { approvedVoices, PREMIUM_MODEL, PREVIEW_TEXT } from '../src/communication/cloud-contract.mts';
 import { choose, choices, initialModel, presented, speechEvent, interrupt, finishAssistance, type Model } from '../src/communication/model.mts';
-import { createElevenLabs, resolveApprovedVoices } from '../server/elevenlabs.mts';
+import { createElevenLabs, resolveApprovedVoices, modelForVoice } from '../server/elevenlabs.mts';
 const step = (s: Model, id: string) => { assert.ok(choices(s).some(c => c.id === id && !c.disabled), id); return choose(s, id, s.uiRevision); };
-const inventory = () => approvedVoices.map(v => ({ voice_id: v.id, name: v.apiName, fine_tuning: { state: { [PREMIUM_MODEL]: 'fine_tuned' } }, sharing: { rate: 1 } }));
+const inventory = () => approvedVoices.map(v => ({ voice_id: v.id, name: v.apiName, fine_tuning: { state: { [modelForVoice(v.id)]: 'fine_tuned' } }, sharing: { rate: 1 } }));
 function model() {
   const s = initialModel('cloud-fixture'); s.draft = 'Please move my left arm, not my right.';
   s.voices = [{ id: 'local', name: 'Local fixture', lang: 'en-US', local: true }]; s.settings.voice = 'local';
   s.cloud = { ...s.cloud, consent: true, elevenlabs: true, gemini: true, voices: resolveApprovedVoices(inventory()) }; return s;
 }
 test('exact approved collection rejects substitutions, duplicate identities, failed tuning and custom rates', () => {
-  const rows = inventory(); rows[4].fine_tuning.state[PREMIUM_MODEL] = 'failed'; rows[3].sharing.rate = 2;
+  const rows = inventory(); rows[4].fine_tuning.state[modelForVoice(approvedVoices[4].id)] = 'failed'; rows[3].sharing.rate = 2;
   const result = resolveApprovedVoices([...rows, rows[0], { voice_id: 'other', name: approvedVoices[1].apiName }]);
   assert.equal(result.length, 6); assert.deepEqual(result.map(v => v.id), approvedVoices.map(v => v.id));
   assert.equal(result[0].available, false); assert.equal(result[1].available, true); assert.equal(result[3].available, false); assert.equal(result[4].available, false);
@@ -48,7 +48,7 @@ test('revoking cloud consent prevents premium approval and leaves system fallbac
   assert.equal(choose(s, 'speak', s.uiRevision), s); assert.ok(choices(s).some(c => c.id === 'fallback' && !c.disabled));
 });
 test('suggestions never insert or speak; selection changes an editable draft and stale results cannot overwrite it', () => {
-  let s = model(); const original = s.draft; s = step(step(s, 'assist'), 'assist-spelling');
+  let s = model(); const original = s.draft; s = step(step(step(s, 'more'), 'assist'), 'assist-spelling');
   const request = s.assistance.request!; const corrected = 'Please move my left arm, not my right.';
   s = finishAssistance(s, request, [{ text: corrected, kind: 'spelling_correction' }]);
   assert.equal(s.draft, original); assert.equal(s.authorization, null);
@@ -57,7 +57,7 @@ test('suggestions never insert or speak; selection changes an editable draft and
 });
 test('focus loss, Cancel and leaving assistance preserve draft and retire every pending request', () => {
   for (const action of ['focus', 'reject-suggestions', 'spell', 'phrases']) {
-    let s = step(step(model(), 'assist'), 'assist-spelling'); const request = s.assistance.request!, draft = s.draft;
+    let s = step(step(step(model(), 'more'), 'assist'), 'assist-spelling'); const request = s.assistance.request!, draft = s.draft;
     s = action === 'focus' ? interrupt(s, 'Focus lost') : step(s, action);
     assert.equal(s.assistance.request, null); assert.equal(s.draft, draft);
     assert.equal(finishAssistance(s, request, [{ text: 'stale', kind: 'spelling_correction' }]), s);

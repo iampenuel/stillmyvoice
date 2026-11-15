@@ -1,6 +1,6 @@
 # Cloud providers — local fictional demonstration
 
-Updated November 14, 2026. ElevenLabs and direct Gemini are wired into the existing communication controller. The deterministic phrase, spelling, correction and system-speech pathways remain available. No firmware or physical-input reducer changes were made.
+Updated November 14, 2026. INTENT-01 supersedes the earlier preferred-model limitation and pending Cecily acceptance below: LaSean now uses a verified server-side Flash v2 exception; the other five retain Flash v2.5. The owner reports exact Cecily phrase playback once. Optional context and deliberate keyword expansion use the existing gated Gemini boundary. [Current evidence](HP26_INTENT_01.md). ElevenLabs and direct Gemini are wired into the existing communication controller. The deterministic phrase, spelling, correction and system-speech pathways remain available. No firmware or physical-input reducer changes were made.
 
 ## Account gates and privacy
 

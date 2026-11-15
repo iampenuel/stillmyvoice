@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { finishAssistance, type Model } from './model.mts';
+import { finishAssistance, finishExpansion, type Model } from './model.mts';
+import type { ExpansionResult } from './expansion-contract.mts';
 import { approvedVoices, type PremiumVoice, type Suggestion } from './cloud-contract.mts';
 
 type Props = { model: Model; current: { current: Model }; commit: (next: Model) => void; canUpdate: () => boolean };
@@ -53,6 +54,9 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
     const timer = setInterval(apply, 100);
     void (async () => {
       try {
+        // Let parent lifecycle retirement run before starting retained work after HMR.
+        await Promise.resolve();
+        if (controller.signal.aborted || current.current.assistance.request?.id !== request.id) return;
         if (!active() || !current.current.cloud.consent || !current.current.cloud.gemini) throw Error('Request canceled. Your words are kept.');
         const response = await json('/api/suggestions', AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), request);
         const items: unknown = response.suggestions;
@@ -66,5 +70,37 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
     })();
     return () => { controller.abort(); clearInterval(timer); };
   }, [request?.id]);
+  const expansionRequest = model.expansion.request;
+  useEffect(() => {
+    if (!expansionRequest) return;
+    const controller = new AbortController();
+    let pending: { result: ExpansionResult | null; error: string } | null = null;
+    const apply = () => {
+      if (!pending || controller.signal.aborted || !active() || !canUpdate()) return;
+      commit(finishExpansion(current.current, expansionRequest, pending.result, pending.error)); pending = null;
+    };
+    const timer = setInterval(apply, 100);
+    void (async () => {
+      try {
+        // Retained request state cannot be replayed before parent HMR cleanup retires it.
+        await Promise.resolve();
+        if (controller.signal.aborted || current.current.expansion.request?.id !== expansionRequest.id) return;
+        if (!active() || !current.current.cloud.consent || !current.current.cloud.gemini) throw Error('Request canceled. Your words are kept.');
+        const result = await json('/api/expansion', AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), expansionRequest);
+        if (!result || Object.keys(result).sort().join(',') !== 'candidate,clarificationChoices,clarificationQuestion,status,unresolvedCues'
+          || !['candidate', 'clarify', 'insufficient_input'].includes(result.status)
+          || typeof result.candidate !== 'string' || result.candidate.length > 360
+          || typeof result.clarificationQuestion !== 'string' || result.clarificationQuestion.length > 120
+          || !Array.isArray(result.unresolvedCues) || result.unresolvedCues.length > 4 || !result.unresolvedCues.every((cue: unknown) => typeof cue === 'string' && cue.length <= 60)
+          || !Array.isArray(result.clarificationChoices) || result.clarificationChoices.length > 4 || !result.clarificationChoices.every((choice: unknown) => typeof choice === 'string' && choice.length > 0 && choice.length <= 80)
+          || (result.status === 'candidate' && (!result.candidate.trim() || result.clarificationQuestion || result.clarificationChoices.length))
+          || (result.status !== 'candidate' && result.candidate)) throw Error('No reliable expansion. Keep your own words.');
+        if (!controller.signal.aborted) { pending = { result, error: '' }; apply(); }
+      } catch (error) {
+        if (!controller.signal.aborted) { pending = { result: null, error: error instanceof Error ? error.message : 'Expansion unavailable.' }; apply(); }
+      }
+    })();
+    return () => { controller.abort(); clearInterval(timer); };
+  }, [expansionRequest?.id]);
   return null;
 }

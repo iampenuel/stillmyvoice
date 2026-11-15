@@ -1,3 +1,4 @@
+import { contextOptions, type CommunicationContext, type ExpansionRequest, type ExpansionResult } from './expansion-contract.mts';
 import { initialCloud, PREVIEW_TEXT, type CloudState, type AssistRequest, type Suggestion } from './cloud-contract.mts';
 /** Authorship and navigation only. This module cannot generate input or play audio. */
 export type Voice = Readonly<{ id: string; name: string; lang: string; local: boolean }>;
@@ -8,7 +9,7 @@ export type Authorization = Readonly<{
 export type Choice = Readonly<{ id: string; label: string; detail?: string; disabled?: boolean }>;
 export type Screen = {
   name: 'compose' | 'categories' | 'phrases' | 'keyboard' | 'repair' | 'review' | 'more'
-    | 'settings' | 'values' | 'voices' | 'premium-voices' | 'voice-detail' | 'assist' | 'assist-context' | 'suggestions' | 'reader' | 'clear' | 'paused' | 'speaking' | 'complete' | 'speech-error';
+    | 'context' | 'expansion' | 'settings' | 'values' | 'voices' | 'premium-voices' | 'voice-detail' | 'assist' | 'assist-context' | 'suggestions' | 'reader' | 'clear' | 'paused' | 'speaking' | 'complete' | 'speech-error';
   value?: string; page?: number;
 };
 type Repair = { start: number; end: number; revision: number; buffer: string; undo: string[]; upper: boolean; deleteRequested: boolean };
@@ -20,10 +21,15 @@ export type Model = {
   review: { revision: number; pages: string[]; seen: number[] } | null;
   settings: { pace: number; size: number; voice: string; rate: number; provider: 'browser' | 'elevenlabs'; systemVoice?: string };
   cloud: CloudState; assistance: { request: AssistRequest | null; revision: number; state: 'idle' | 'loading' | 'ready' | 'failed'; items: Suggestion[]; error: string };
+  context: CommunicationContext; expansion: ExpansionState;
   voices: Voice[]; authorization: Authorization | null;
   speech: 'Not spoken' | 'Awaiting approval' | 'Preparing' | 'Speaking' | 'Stopped' | 'Playback finished' | 'Speech failed';
   lastPlayed: string | null; speechPreview?: boolean; serial: number; session: string;
 };
+export type ExpansionState = { request: ExpansionRequest | null; source: string; revision: number; result: ExpansionResult | null; state: 'idle' | 'loading' | 'ready' | 'failed'; error: string; answer: string; editing: boolean; buffer: string; undo: string[] };
+const initialExpansion = (): ExpansionState => ({ request: null, source: '', revision: 0, result: null, state: 'idle', error: '', answer: '', editing: false, buffer: '', undo: [] });
+const editingText = (s: Model) => s.expansion.editing ? s.expansion.buffer : s.repair?.buffer ?? s.draft;
+const canExpand = (s: Model) => !!s.draft.trim() && s.cloud.consent && s.cloud.gemini;
 export const phrases: Record<string, readonly string[]> = {
   Essentials: ['I need help.', 'Please stop.', 'Yes.', 'No.'],
   Comfort: ['Please reposition me.', 'I am not ready.', 'Please give me a moment.'],
@@ -41,7 +47,7 @@ const more = () => c('more', 'More controls');
 export function initialModel(session: string): Model {
   return { draft: '', revision: 0, uiRevision: 0, undo: [], screen: { name: 'compose' }, stack: [], notice: '', focusId: null,
     provenance: 'Your words', repair: null, upper: false, review: null, authorization: null, speech: 'Not spoken',
-    lastPlayed: null, serial: 0, session, voices: [], cloud: initialCloud(), assistance: { request: null, revision: 0, state: 'idle', items: [], error: '' },
+    context: 'general', expansion: initialExpansion(), lastPlayed: null, serial: 0, session, voices: [], cloud: initialCloud(), assistance: { request: null, revision: 0, state: 'idle', items: [], error: '' },
     settings: { pace: 1600, size: 100, voice: '', rate: 1, provider: 'browser' } };
 }
 /** The exact enabled targets rendered by the UI, with its requested starting target. */
@@ -51,7 +57,7 @@ export function inputView(model: Model) {
   const start = model.focusId ? Math.max(0, targets.indexOf(model.focusId)) : 0;
   return { id: model.screen.name, revision: model.uiRevision, targets: [...targets.slice(start), ...targets.slice(0, start)] };
 }
-const navigationIds = new Set(['back', 'more', 'review', 'done', 'resume', 'stop', 'pause', 'all-categories', 'row:navigation', 'row:rows', 'char: ', 'erase']);
+const navigationIds = new Set(['back', 'more', 'review', 'done', 'resume', 'stop', 'pause', 'all-categories', 'row:navigation', 'row:rows', 'char: ', 'erase', 'context-set:general']);
 export function choiceSections(model: Model) {
   const list = choices(model);
   return { primary: list.filter(x => !navigationIds.has(x.id)), navigation: list.filter(x => navigationIds.has(x.id)) };
@@ -64,8 +70,12 @@ export function choices(s: Model): Choice[] {
   const screen = s.screen, page = screen.page ?? 0;
   switch (screen.name) {
     case 'compose': return [c('phrases', 'Phrases'), c('spell', 'Spell'),
-      c('assist', 'Get suggestions', false, 'Optional wording help'),
+      c('expand', 'Expand my words', !canExpand(s), 'Start with your own keywords'), c('context', 'Context', false, contextOptions.find(option => option.id === s.context)?.name ?? 'General'),
       c('review', 'Review message', !s.draft.trim()), more()];
+    case 'context': return [...contextOptions.map(option => c(`context-set:${option.id}`, option.name, false, (s.context === option.id ? 'Selected · ' : '') + option.description)), back()];
+    case 'expansion': return [...(s.expansion.result?.status === 'candidate' ? [c('accept-expansion', 'Review this wording'), c('edit-expansion', 'Edit candidate')] : []),
+      ...(s.expansion.result?.status === 'clarify' ? s.expansion.result.clarificationChoices.filter(text => text !== 'Keep my words').map((text, i) => c(`clarify-expansion:${i}`, text)) : []),
+      c('keep-words', 'Keep my words'), ...(s.expansion.state !== 'loading' ? [c('retry-expansion', 'Try another', !canExpand(s))] : []), back()];
     case 'categories': return [...Object.keys(phrases).map(x => c(`category:${x}`, x)), back(), more()];
     case 'phrases': return [...phraseList(screen.value!)!.map((x, i) => c(`phrase:${i}`, x)),
       ...(screen.value === 'Quick phrases' ? [c('all-categories', 'All categories')] : []), back(), more()];
@@ -80,17 +90,18 @@ export function choices(s: Model): Choice[] {
       if (row === 'rows') return [c('row:abcde', 'A–E'), c('row:fghij', 'F–J'), c('row:klmno', 'K–O'),
         c('row:pqrst', 'P–T'), c('row:uvwxyz', 'U–Z'), c('row:editing', 'Editing and controls'),
         ...(s.repair ? [c('prefix:not', 'Add “do not ” before this word', false, `Stages: do not ${s.draft.slice(s.repair.start, s.repair.end)}`)] : []),
-        c('done', s.repair ? 'Apply correction' : 'Done', !!s.repair && !s.repair.buffer && !s.repair.deleteRequested),
-        c('char: ', 'Space'), c('erase', 'Backspace', !(s.repair?.buffer ?? s.draft))];
+        c('done', s.expansion.editing ? 'Save candidate' : s.repair ? 'Apply correction' : 'Done', s.expansion.editing ? !s.expansion.buffer.trim() : !!s.repair && !s.repair.buffer && !s.repair.deleteRequested),
+        c('char: ', 'Space'), c('erase', 'Backspace', !editingText(s)),
+        ...(!s.repair && !s.expansion.editing ? [c('expand', 'Expand my words', !canExpand(s))] : [])];
       if (row === 'numbers') return [c('row:01234', '0–4'), c('row:56789', '5–9'), c('row:editing', 'Space and editing'), c('row:navigation', 'Navigation'), c('row:rows', 'Letters')];
       if (row === 'punctuation') return [c("row:.,?!'", 'Period, comma, question, exclamation, apostrophe'), c('row:-:;/()', 'Dash, colon, semicolon, slash, parentheses'), c('row:editing', 'Space and editing'), c('row:navigation', 'Navigation'), c('row:rows', 'Letters')];
-      if (row === 'editing') return [c('char: ', 'Space'), c('erase', 'Backspace', !(s.repair?.buffer ?? s.draft)),
-        c('undo', 'Undo', !(s.repair ? s.repair.undo.length : s.undo.length)),
+      if (row === 'editing') return [c('char: ', 'Space'), c('erase', 'Backspace', !editingText(s)),
+        c('undo', 'Undo', !(s.expansion.editing ? s.expansion.undo.length : s.repair ? s.repair.undo.length : s.undo.length)),
         c('upper', 'Uppercase next', false, (s.repair?.upper ?? s.upper) ? 'On' : 'Off'),
         c('row:numbers', 'Numbers'), c('row:punctuation', 'Punctuation'),
-        ...(s.repair ? [c('delete-word', 'Delete selected word')] : []), back(), c('pause', 'Pause scanning'), more(), c('row:rows', 'Back to rows')];
-      if (row === 'navigation') return [c('done', s.repair ? 'Apply correction' : 'Done', !!s.repair && !s.repair.buffer && !s.repair.deleteRequested),
-        back(), c('pause', 'Pause scanning'), more(), c('row:rows', 'Back to rows')];
+        ...(s.repair ? [c('delete-word', 'Delete selected word')] : []), back(), c('pause', 'Pause scanning'), c('more', 'More controls', s.expansion.editing), c('row:rows', 'Back to rows')];
+      if (row === 'navigation') return [c('done', s.expansion.editing ? 'Save candidate' : s.repair ? 'Apply correction' : 'Done', s.expansion.editing ? !s.expansion.buffer.trim() : !!s.repair && !s.repair.buffer && !s.repair.deleteRequested),
+        back(), c('pause', 'Pause scanning'), c('more', 'More controls', s.expansion.editing), c('row:rows', 'Back to rows')];
       return [...Array.from(row).map(x => c(`char:${x}`, (s.repair?.upper ?? s.upper) ? x.toUpperCase() : x)), c('row:rows', 'Back to rows')];
     }
     case 'review': {
@@ -100,8 +111,8 @@ export function choices(s: Model): Choice[] {
           !complete ? 'Read every part before speaking.' : !speechAvailable(s) ? 'Choose an available voice in Settings.' : 'A separate selection authorizes the full message.'),
         ...(s.settings.provider === 'elevenlabs' && !speechAvailable(s) ? [c('fallback', 'Speak using system voice', !s.voices.length, 'Review again before approval.')] : []), c('edit', 'Make changes'), back(), more()];
     }
-    case 'more': return [c('home', 'Your message', !!s.repair, s.repair ? 'Finish or cancel the correction first.' : undefined), c('undo', 'Undo', !(s.repair ? s.repair.undo.length : s.undo.length)),
-      c('reader', 'Read message', !s.draft), c('settings', 'Settings'), c('clear', 'New message', !s.draft), c('pause', 'Pause scanning'), back()];
+    case 'more': return [c('home', 'Your message', !!s.repair || s.expansion.editing, s.repair || s.expansion.editing ? 'Finish or cancel the correction first.' : undefined), c('undo', 'Undo', !(s.expansion.editing ? s.expansion.undo.length : s.repair ? s.repair.undo.length : s.undo.length)),
+      c('reader', 'Read message', !s.draft), c('assist', 'Suggestions', false, 'Optional wording help'), c('settings', 'Settings'), c('clear', 'New message', !s.draft), c('pause', 'Pause scanning'), back()];
     case 'settings': return [c('value:pace', 'Scan pace', false, `${s.settings.pace / 1000} seconds`),
       c('value:size', 'Text size', false, `${s.settings.size}%`), c('voices', 'Voice', false, (s.settings.provider === 'elevenlabs' ? s.cloud.voices : s.voices).find(x => x.id === s.settings.voice)?.name ?? 'Choose a voice'),
       c('value:rate', 'Speech rate', false, `${s.settings.rate}×`), c('preview', 'Preview voice', !speechAvailable(s)), back(), more()];
@@ -131,7 +142,7 @@ export function choices(s: Model): Choice[] {
 }
 export function title(s: Model): string {
   const names: Record<Screen['name'], string> = { compose: 'Make your message', categories: 'Choose a category', phrases: s.screen.value ?? 'Phrases',
-    keyboard: s.repair ? 'Correct this word' : 'Spell your message', repair: 'Choose a word to correct', review: 'Review before speaking', more: 'More controls',
+    context: 'Communication context', expansion: s.expansion.result?.status === 'clarify' ? 'One clarification' : 'Inspect expanded wording', keyboard: s.expansion.editing ? 'Edit candidate only' : s.repair ? 'Correct this word' : 'Spell your message', repair: 'Choose a word to correct', review: 'Review before speaking', more: 'More controls',
     settings: 'Your settings', values: `Choose ${s.screen.value}`, voices: 'System voices', 'premium-voices': 'ElevenLabs voices', 'voice-detail': candidateVoice(s)?.name ?? 'Voice unavailable', assist: 'Optional suggestions', 'assist-context': 'Fictional conversation', suggestions: 'Suggestions', reader: 'Read your message', clear: 'Start a new message?',
     paused: 'Scanning paused', speaking: s.authorization?.preview ? 'Voice preview' : 'Your approved message', complete: 'Message playback ended', 'speech-error': 'Speech stopped' };
   return names[s.screen.name];
@@ -149,9 +160,10 @@ function editDraft(s: Model, text: string) {
   if (text === s.draft) return;
   if (text.length > 4096) { s.notice = 'Message limit reached (4,096 characters). Your existing words are kept.'; return; }
   s.undo = [...s.undo.slice(-49), s.draft]; s.draft = text; s.revision++; s.review = null;
-  s.authorization = null; s.speech = 'Not spoken'; s.speechPreview = false; s.provenance = 'Your edited wording';
+  s.authorization = null; s.expansion.request = null; s.speech = 'Not spoken'; s.speechPreview = false; s.provenance = 'Your edited wording';
 }
 function editBuffer(s: Model, text: string) {
+  if (s.expansion.editing) { if (text.length <= 600) { s.expansion.undo = [...s.expansion.undo.slice(-49), s.expansion.buffer]; s.expansion.buffer = text; } return; }
   if (!s.repair) return editDraft(s, text);
   if (text.length > 4096) { s.notice = 'Correction is too long.'; return; }
   s.repair.undo = [...s.repair.undo.slice(-49), s.repair.buffer]; s.repair.buffer = text;
@@ -186,7 +198,8 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   const s = structuredClone(before); s.uiRevision++; s.notice = ''; s.focusId = null;
   const page = s.screen.page ?? 0;
   if (id === 'back') {
-    if (s.screen.name === 'keyboard') { s.repair = null; home(s); }
+    if (s.screen.name === 'keyboard' && s.expansion.editing) { s.expansion.editing = false; pop(s); }
+    else if (s.screen.name === 'keyboard') { s.repair = null; home(s); }
     else pop(s);
   } else if (id === 'more') go(s, { name: 'more' });
   else if (id === 'phrases') go(s, { name: 'phrases', value: 'Quick phrases' });
@@ -196,6 +209,24 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id.startsWith('phrase:')) { editDraft(s, s.draft + phraseList(s.screen.value!)![Number(id.slice(7))]); s.provenance = 'Your words'; home(s); }
   else if (id === 'spell') { s.repair = null; go(s, { name: 'keyboard', value: 'rows' }); }
   else if (id === 'review') startReview(s);
+  else if (id === 'context') go(s, { name: 'context' });
+  else if (id.startsWith('context-set:')) { s.context = id.slice(12) as CommunicationContext; s.expansion = initialExpansion(); pop(s); }
+  else if (id === 'expand' || id === 'retry-expansion' || id.startsWith('clarify-expansion:')) {
+    if (!canExpand(s)) return before;
+    const clarification = id.startsWith('clarify-expansion:') ? s.expansion.result?.clarificationChoices.filter(text => text !== 'Keep my words')[Number(id.slice(18))] ?? '' : id === 'retry-expansion' ? s.expansion.answer : '';
+    s.expansion = { ...initialExpansion(), source: s.draft, revision: s.revision, state: 'loading', answer: clarification,
+      request: { id: `${s.session}:${++s.serial}`, text: s.draft, context: s.context, clarification, synthetic: true } };
+    if (s.screen.name !== 'expansion') go(s, { name: 'expansion' });
+  } else if (id === 'keep-words') { s.expansion = initialExpansion(); home(s); }
+  else if (id === 'accept-expansion') {
+    const text = s.expansion.result?.candidate;
+    if (!text?.trim() || s.expansion.source !== s.draft || s.expansion.revision !== s.revision) return before;
+    editDraft(s, text); s.provenance = 'Suggestion selected'; startReview(s);
+  } else if (id === 'edit-expansion') {
+    if (s.expansion.result?.status !== 'candidate') return before;
+    s.expansion.editing = true; s.expansion.buffer = s.expansion.result.candidate; s.expansion.undo = [];
+    go(s, { name: 'keyboard', value: 'rows' });
+  }
   else if (id === 'assist') go(s, { name: 'assist' });
   else if (id === 'assist-context') go(s, { name: 'assist-context' });
   else if (id === 'assist-spelling' || id === 'assist-wording' || id.startsWith('context:')) {
@@ -221,25 +252,30 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   } else if (id.startsWith('row:')) s.screen = { name: 'keyboard', value: id.slice(4) };
   else if (id.startsWith('char:')) {
     let value = id.slice(5); if (s.repair?.upper ?? s.upper) value = value.toUpperCase();
-    editBuffer(s, (s.repair?.buffer ?? s.draft) + value);
+    editBuffer(s, editingText(s) + value);
     if (s.repair) s.repair.upper = false; else s.upper = false;
     s.focusId = `row:${s.screen.value}`;
     s.screen = { name: 'keyboard', value: 'rows' };
-  } else if (id === 'erase') editBuffer(s, Array.from(s.repair?.buffer ?? s.draft).slice(0, -1).join(''));
+  } else if (id === 'erase') editBuffer(s, Array.from(editingText(s)).slice(0, -1).join(''));
   else if (id === 'upper') { if (s.repair) s.repair.upper = !s.repair.upper; else s.upper = !s.upper; }
   else if (id === 'undo') {
-    if (s.repair) { s.repair.buffer = s.repair.undo.pop() ?? s.repair.buffer; s.repair.deleteRequested = false; }
+    if (s.expansion.editing) s.expansion.buffer = s.expansion.undo.pop() ?? s.expansion.buffer;
+    else if (s.repair) { s.repair.buffer = s.repair.undo.pop() ?? s.repair.buffer; s.repair.deleteRequested = false; }
     else { const old = s.undo.pop(); if (old !== undefined) { s.draft = old; s.revision++; s.review = null; s.authorization = null; s.speech = 'Not spoken'; } }
   } else if (id === 'delete-word' && s.repair) {
     editBuffer(s, ''); s.repair.deleteRequested = true; s.screen = { name: 'keyboard', value: 'navigation' };
     s.notice = 'Deletion is staged. Choose Apply correction to remove this word, or Back to keep it.';
   } else if (id === 'done') {
+    if (s.expansion.editing && s.expansion.result) {
+      s.expansion.result = { ...s.expansion.result, candidate: s.expansion.buffer }; s.expansion.editing = false; pop(s);
+    } else {
     if (s.repair && s.repair.revision === s.revision) {
       const r = s.repair;
       // Delete is a deliberate action; never infer deletion from an empty correction.
       editDraft(s, s.draft.slice(0, r.start) + r.buffer + s.draft.slice(r.end));
     }
     home(s);
+    }
   } else if (id === 'next') s.screen.page = page + 1;
   else if (id === 'previous') s.screen.page = page - 1;
   else if (id === 'clear') go(s, { name: 'clear' });
@@ -259,6 +295,7 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id.startsWith('premium:')) {
     const voice = s.cloud.voices[Number(id.slice(8))];
     if (!voice) return before;
+    s.authorization = null; s.speechPreview = false; s.speech = s.lastPlayed === s.draft ? 'Playback finished' : 'Not spoken';
     go(s, { name: 'voice-detail', value: voice.id });
   } else if (id === 'back-to-voices') { pop(s); }
   else if (id === 'use-voice') {
@@ -283,6 +320,7 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
     s.speech = 'Preparing'; go(s, { name: 'speaking' });
   } else if (id === 'stop') { s.authorization = null; s.speech = 'Stopped'; pop(s); }
   if (s.screen.name !== 'suggestions') s.assistance.request = null;
+  if (s.screen.name !== 'expansion') s.expansion.request = null;
   return s;
 }
 export function speechEvent(before: Model, id: string, event: 'start' | 'end' | 'error'): Model {
@@ -299,6 +337,7 @@ export function speechEvent(before: Model, id: string, event: 'start' | 'end' | 
 /** An interruption is never navigation, a release, a resume or speech approval. */
 export function interrupt(before: Model, reason: string): Model {
   const s = structuredClone(before); s.uiRevision++; s.notice = reason;
+  if (s.expansion?.request) { s.expansion.request = null; s.expansion.state = 'failed'; s.expansion.error = 'Request canceled. Your words are kept.'; }
   if (s.assistance?.request) { s.assistance.request = null; s.assistance.state = 'failed'; s.assistance.error = 'Request canceled. Your words are kept.'; }
   if (reason.startsWith('Layout changed')) s.review = null;
   if (s.authorization) { s.authorization = null; s.speech = 'Stopped'; pop(s); }
@@ -308,16 +347,22 @@ export function interrupt(before: Model, reason: string): Model {
 /** Fast refresh may retain React state while replacing controllers. Authored
  * state may survive; an old playback permission must never cross that boundary. */
 export function retireRuntimeAuthorization(before: Model): Model {
-  return before.authorization || before.assistance?.request ? interrupt(before, 'Workspace restarted — speech approval canceled') : before;
+  return before.authorization || before.assistance?.request || before.expansion?.request ? interrupt(before, 'Workspace restarted — speech approval canceled') : before;
 }
 
 export const fictionalContexts = ['Are you uncomfortable?', 'Would you like to change position?', 'Can I help?'] as const;
 /** Upgrade retained development state without clearing an existing private draft. */
 export function withCloudDefaults(before: Model): Model {
-  return before.cloud && before.assistance ? before : { ...before, cloud: initialCloud(), assistance: { request: null, revision: before.revision, state: 'idle', items: [], error: '' } };
+  return before.cloud && before.assistance && before.expansion && before.context ? before : { ...before, context: before.context ?? 'general', expansion: before.expansion ?? initialExpansion(), cloud: before.cloud ?? initialCloud(), assistance: before.assistance ?? { request: null, revision: before.revision, state: 'idle', items: [], error: '' } };
 }
 export function finishAssistance(before: Model, request: AssistRequest, items: Suggestion[], error = ''): Model {
   if (before.screen.name !== 'suggestions' || before.assistance.request?.id !== request.id || before.revision !== before.assistance.revision
     || before.draft !== request.text || !before.cloud.consent) return before;
   return { ...before, uiRevision: before.uiRevision + 1, assistance: { ...before.assistance, request: null, state: error ? 'failed' : 'ready', items: error ? [] : items, error } };
+}
+
+export function finishExpansion(before: Model, request: ExpansionRequest, result: ExpansionResult | null, error = ''): Model {
+  if (before.screen.name !== 'expansion' || before.expansion.request?.id !== request.id || before.revision !== before.expansion.revision
+    || before.draft !== request.text || before.context !== request.context || !before.cloud.consent) return before;
+  return { ...before, uiRevision: before.uiRevision + 1, expansion: { ...before.expansion, request: null, state: error ? 'failed' : 'ready', result: error ? null : result, error } };
 }

@@ -8,6 +8,8 @@ The rules require code built within the November 13 8 PM–November 15 8 AM even
 
 ## Current readiness
 
+INTENT-01 current update: 121 automated tests, typecheck, production build and an 83-file source/bundle credential scan passed. Live keyword expansion and negation preservation succeeded; ambiguous duration required explicit clarification. LaSean now has verified Flash v2 synthesis and browser preview completion. Cecily exact phrase is owner-confirmed; new intent/LaSean physical acceptance remains pending. Public main remains the approved 9983260; newer source is local and requires publication approval. See [checkpoint evidence](HP26_INTENT_01.md). Older counts and preferred-model blocker below describe the earlier checkpoint.
+
 - Reliable local phrase/spelling/correction/system-speech path has owner-reported physical acceptance for the exercised scenarios. Released-switch focus recovery at c0d4d27 was also confirmed.
 - Existing two-panel UI retained; compact recovery and provider notices inspected.
 - 93 automated tests, typecheck, production build and source/bundle credential scan passed. No accepted firmware/input reducer changes.
@@ -37,7 +39,7 @@ Record which actions were physically performed, exact heard text/voice, failures
 
 0:20–0:55 — Select a fictional phrase, review silently, and use a new switch cycle to speak. Explain target capture on press and one commit on matching release. Holding does not repeat.
 
-0:55–1:20 — Show an optional Gemini reply or spelling correction. Nothing enters the message until selected; nothing speaks until separately approved. Do not claim unrestricted rewriting or measured clinical benefit.
+0:55–1:20 — Show deliberate keyword expansion with optional context, keeping the person’s words visible until they accept a candidate. Nothing enters the message until selected; nothing speaks until separately approved. Do not claim unrestricted rewriting or measured clinical benefit.
 
 1:20–1:40 — Demonstrate selected voice or correction and Stop. If cloud is unavailable, use deliberate system fallback with fresh review/approval.
 

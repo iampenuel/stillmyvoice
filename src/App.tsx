@@ -85,7 +85,7 @@ export function App() {
     const blur = () => {
       // The native permission picker can temporarily blur before port opening.
       // The accepted adapter guards opening and every post-open focus loss.
-      if (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request) controller.suspend('Focus lost — communication preserved');
+      if (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request || current.current.expansion.request) controller.suspend('Focus lost — communication preserved');
     };
     const focus = () => { if (active() && !setup.current?.open) void controller.foreground(); };
     const visibility = () => { if (document.visibilityState !== 'visible') controller.suspend('Page hidden — communication preserved'); else focus(); };
@@ -110,7 +110,7 @@ export function App() {
       }
       // Some browser-chrome transitions do not deliver a window blur. This also
       // covers companion-approved pending/playing speech without a serial poll.
-      if (!(focused && visible) && (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request)) controller.suspend('Inactive page — communication preserved');
+      if (!(focused && visible) && (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request || current.current.expansion.request)) controller.suspend('Inactive page — communication preserved');
     };
     const activityTimer = setInterval(checkActivity, 25); checkActivity();
     window.addEventListener('blur', blur); window.addEventListener('focus', focus); window.addEventListener('resize', resize); window.addEventListener('pagehide', unload);
@@ -267,12 +267,13 @@ export function App() {
         </div>
         <div ref={messageRegion} className="message-content" tabIndex={0} aria-label="Message reading area">
           <p ref={message} className={'message-text' + (model.draft ? '' : ' placeholder')} data-testid="message-text">{displayed || 'Your words will appear here.'}</p>
+          {model.expansion.editing ? <div className="correction"><p>Editing candidate only · Your words are unchanged</p><p className="replacement exact">{model.expansion.buffer || 'Choose letters.'}</p></div> : null}
           {model.repair ? <div className="correction"><p>Selected word: <strong>{model.draft.slice(model.repair.start, model.repair.end)}</strong></p>
             <p className="replacement-label">Replacement</p><p className="replacement exact">{model.repair.buffer || 'Choose letters or a shortcut.'}</p>
             <p className="small">Your message changes only when you choose Apply correction.</p></div> : null}
         </div>
         <div className="message-footer">
-          <p className="speech-state" aria-live="polite">{model.repair ? 'Correction not applied' : playbackStatus}</p>
+          <p className="speech-state" aria-live="polite">{model.expansion.editing ? 'Candidate not applied' : model.repair ? 'Correction not applied' : playbackStatus}</p>
           {model.screen.name === 'review' ? <p className="small">Review every part. A new selection on Speak approves the exact full message.</p>
             : model.lastPlayed !== null && model.speech !== 'Playback finished' ? <p className="small">Previously played. New approval is required to speak again.</p> : null}
         </div>
@@ -286,10 +287,11 @@ export function App() {
             {recovery.setup ? <button type="button" className="compact-control" onClick={openSetup}>Companion setup</button> : null}</div>
             : model.notice && model.screen.name !== 'paused' ? <p className="notice" role="status">{model.notice}</p> : null}
           {model.screen.name === 'assist' ? <p className="notice">{!model.cloud.consent ? 'Fictional demo only. A companion can enable cloud use in setup.' : !model.cloud.gemini ? model.cloud.geminiReason : 'Optional Gemini suggestions. Nothing changes until you choose.'}</p> : null}
+          {model.screen.name === 'expansion' ? <div className="notice" role="status">{model.expansion.state === 'loading' ? 'Expanding your words… Your original words are kept.' : model.expansion.error || (model.expansion.result?.status === 'candidate' ? <><p>Proposed wording · Check the meaning</p><p className="exact">{model.expansion.result.candidate}</p></> : model.expansion.result?.status === 'clarify' ? model.expansion.result.clarificationQuestion : 'Please add a few more words or keep your wording.')}</div> : null}
           {model.screen.name === 'suggestions' ? <p className="notice" role="status">{model.assistance.state === 'loading' ? 'Preparing suggestions… Your words are kept.' : model.assistance.error || (model.assistance.items.length ? 'Suggestions may be wrong. Choose only wording you intend.' : 'No reliable suggestions. Continue with your own wording.')}</p> : null}
           {model.screen.name === 'speech-error' ? <p className="notice" role="status">Speech could not finish. Your message is kept.</p> : null}
           {voiceCandidate && (!voiceCandidate.available || !model.cloud.consent || !model.cloud.elevenlabs) ? <p className="notice" role="status">{!voiceCandidate.available ? voiceCandidate.reason : !model.cloud.consent ? 'Enable fictional cloud demo in Companion setup to preview or use this voice.' : model.cloud.elevenReason}</p> : null}
-          <div className="choices" data-grid={model.screen.name === 'phrases' || model.screen.name === 'keyboard' || model.screen.name === 'repair'}>
+          <div className="choices" data-grid={model.screen.name === 'phrases' || model.screen.name === 'keyboard' || model.screen.name === 'repair' || model.screen.name === 'context'}>
             {sections.primary.map(renderChoice)}
           </div>
           {sections.navigation.length ? <div className="navigation-choices">{sections.navigation.map(renderChoice)}</div> : null}
@@ -325,7 +327,7 @@ export function App() {
       <label><input type="checkbox" checked={model.cloud.consent} onChange={event => {
         speech.current?.cancel(); const before = current.current;
         commit({ ...before, uiRevision: before.uiRevision + 1, authorization: null,
-          cloud: { ...before.cloud, consent: event.target.checked }, assistance: { ...before.assistance, request: null, items: [] } });
+          cloud: { ...before.cloud, consent: event.target.checked }, expansion: { ...before.expansion, request: null }, assistance: { ...before.assistance, request: null, items: [] } });
       }} /> I am using fictional content and permit deliberate speech/suggestion requests to ElevenLabs and Google. No real private communication.</label>
       <p>ElevenLabs: {model.cloud.elevenReason}. Gemini: {model.cloud.geminiReason}. Selecting a voice or suggestion never starts speech.</p>
       <button type="button" onClick={() => { const before = current.current; commit({ ...before, cloud: { ...before.cloud, refresh: (before.cloud.refresh ?? 0) + 1 } }); }}>Refresh cloud status</button>

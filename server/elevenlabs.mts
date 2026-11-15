@@ -3,6 +3,10 @@ import type { Authorization } from '../src/communication/model.mts';
 import { approvedVoices, PREMIUM_MODEL, PREVIEW_TEXT, type PremiumVoice } from '../src/communication/cloud-contract.mts';
 export type { PremiumVoice } from '../src/communication/cloud-contract.mts';
 
+/** Reviewed per-voice exception; clients cannot supply a model or a fallback. */
+export const modelForVoice = (id: string): string => id === 'bQxW1c7YCr6VQgQhw8KX' ? 'eleven_flash_v2' : PREMIUM_MODEL;
+const modelLabel = (id: string) => modelForVoice(id) === 'eleven_flash_v2' ? 'Flash v2 · English' : 'Flash v2.5';
+
 export class ProviderError extends Error {
   readonly status: number;
   readonly code: string;
@@ -13,14 +17,14 @@ export function resolveApprovedVoices(raw: unknown[]): PremiumVoice[] {
     const matches = raw.map(object).filter(v => v?.voice_id === approved.id);
     const voice = matches.length === 1 ? matches[0] : null;
     const fine = object(voice?.fine_tuning), states = object(fine?.state), sharing = object(voice?.sharing);
-    const compatible = states?.[PREMIUM_MODEL] === 'fine_tuned';
+    const compatible = states?.[modelForVoice(approved.id)] === 'fine_tuned';
     const disabled = typeof sharing?.disable_at_unix === 'number' && sharing.disable_at_unix * 1000 <= Date.now();
     const standardRate = sharing?.rate == null || sharing.rate === 1;
     const identity = voice?.name === approved.apiName;
     const available = !!voice && identity && compatible && !disabled && standardRate;
     const reason = !voice ? 'Not available in this account' : !identity ? 'Voice identity needs verification'
-      : !compatible ? 'Unavailable with Flash v2.5' : disabled ? 'Voice withdrawn'
-      : !standardRate ? 'Custom usage rate requires review' : 'Flash v2.5 metadata verified; preview not yet heard';
+      : !compatible ? `Unavailable with ${modelLabel(approved.id)}` : disabled ? 'Voice withdrawn'
+      : !standardRate ? 'Custom usage rate requires review' : `${modelLabel(approved.id)} metadata verified; preview not yet heard`;
     return { id: approved.id, name: approved.name, description: approved.description, group: approved.group, available, reason, auditioned: false };
   });
 }
@@ -118,7 +122,7 @@ export function createElevenLabs(env: Record<string, string | undefined>, fetche
       try {
         const response = await request(`/v1/text-to-speech/${approved.voice}/stream?output_format=mp3_44100_128`, bounded, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: approved.text,
-            model_id: PREMIUM_MODEL, apply_text_normalization: 'off', voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0, use_speaker_boost: false, speed: approved.rate } }),
+            model_id: modelForVoice(approved.voice), apply_text_normalization: 'off', voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0, use_speaker_boost: false, speed: approved.rate } }),
         });
         if (!response.headers.get('content-type')?.startsWith('audio/')) { await response.body?.cancel(); throw new ProviderError('INVALID_AUDIO_RESPONSE', 502); }
         const audio = await boundedBody(response, 8 * 1024 * 1024, bounded);

@@ -2,6 +2,8 @@
 
 ## Scope and owner evidence
 
+Owner update after checkpoint **96e483b**: “I heard the exact phrase once, yes!” in response to the switch-only Cecily preview, explicit Use, silent Review and fresh Speak repeat. The subsequent INTENT-01 directive also confirms Cecily preview and approved phrase playback were heard. This is positive owner-reported acceptance for that exercised workflow. Physical Stop, other voices and intent expansion remain separate checks.
+
 The owner heard Cecily through ElevenLabs and reported successful voice selection. Preview was difficult to find after selection. This is positive owner-reported audible evidence for the exercised voice flow; it does not confirm the remaining exact-phrase, Stop, second-voice and Gemini physical tests.
 
 The correction retains the existing panels, typography and buttons. No CSS, firmware, transport, credentials, provider model, voice ID or input-reducer changes. The published baseline is 9983260 at https://github.com/iampenuel/stillmyvoice; this follow-up is locally implemented pending review.
