@@ -177,7 +177,7 @@ test('all 30 trials include incorrect estimates and abstentions in the denominat
     }
     run.finish(start+2000);
   }
-  assert.deepEqual(run.summary(),{denominator:30,completed:30,pending:0,correct:27,incorrect:2,abstained:1,correctFraction:0.9,trackingLossEvents:2,pilotGoalMet:true});
+  assert.deepEqual(run.summary(),{denominator:30,completed:30,pending:0,interrupted:0,correct:27,incorrect:2,abstained:1,correctFraction:0.9,trackingLossEvents:2,pilotGoalMet:true});
   const records=run.records(); assert.equal(records.length,30);
   assert.equal(records[0].stabilizationMs,600); assert.equal(records[29].stabilizationMs,null);
   assert.equal(records[29].trackingLossEvents,2); assert.throws(()=>run.begin(100000));
@@ -256,7 +256,7 @@ test('six-trial diagnostic plans are balanced and cannot satisfy the thirty-tria
     const start=i*3000,trial=run.begin(start); f.reset(start);
     run.observe(stable(f,start,trial.promptedRegion==='left'?200:750),start+600);run.finish(start+2000);
   }
-  assert.deepEqual(run.summary(),{denominator:6,completed:6,pending:0,correct:6,incorrect:0,abstained:0,correctFraction:1,trackingLossEvents:0,pilotGoalMet:false});
+  assert.deepEqual(run.summary(),{denominator:6,completed:6,pending:0,interrupted:0,correct:6,incorrect:0,abstained:0,correctFraction:1,trackingLossEvents:0,pilotGoalMet:false});
   assert.equal(run.count,6); assert.throws(()=>run.begin(20000));
   assert.equal(balanced30TrialPlan(['left','right'],seeded(4)).length,30);
 });
@@ -264,5 +264,76 @@ test('six-trial diagnostic plans are balanced and cannot satisfy the thirty-tria
 test('diagnostic denominator includes abstentions and pending trials without being relabeled acceptance',()=>{
   const run=new GazeTrialRun(['left','right'],seeded(4),6);
   run.begin(0); run.finish(2000);
-  assert.deepEqual(run.summary(),{denominator:6,completed:1,pending:5,correct:0,incorrect:0,abstained:1,correctFraction:0,trackingLossEvents:0,pilotGoalMet:false});
+  assert.deepEqual(run.summary(),{denominator:6,completed:1,pending:5,interrupted:0,correct:0,incorrect:0,abstained:1,correctFraction:0,trackingLossEvents:0,pilotGoalMet:false});
+});
+
+
+test('viewport interruption keeps a partial second trial pending rather than inventing an abstention',()=>{
+  const run=new GazeTrialRun(['left','right'],seeded(4),6),f=new GazeStability();f.enable(viewport);
+  const first=run.begin(0);
+  run.observe(stable(f,0,first.promptedRegion==='left'?200:750),600);run.finish(4500);
+  const second=run.begin(4500);f.reset(4500);
+  run.observe(f.observe(null,4600,layout),4600);
+  const partial=run.interrupt(5000,'viewport-changed');
+  assert.deepEqual(partial,{trial:2,promptedRegion:second.promptedRegion,predictedRegion:null,outcome:'interrupted',trackingLossEvents:1,stabilizationMs:null,startedAt:4500,interruptedAt:5000,reason:'viewport-changed'});
+  assert.equal(run.records().length,1);assert.equal(run.interruption(),partial);
+  assert.deepEqual(run.summary(),{denominator:6,completed:1,pending:5,interrupted:1,correct:1,incorrect:0,abstained:0,correctFraction:1/6,trackingLossEvents:1,pilotGoalMet:false});
+});
+
+test('an observed classification in a shortened trial is retained as unscored interruption evidence',()=>{
+  const run=new GazeTrialRun(['left','right'],seeded(4),6),f=new GazeStability();f.enable(viewport);
+  const trial=run.begin(0);run.observe(stable(f,0,trial.promptedRegion==='left'?200:750),600);
+  const partial=run.interrupt(900,'user-stopped');
+  assert.equal(partial?.predictedRegion,trial.promptedRegion);assert.equal(partial?.stabilizationMs,600);
+  assert.equal(partial?.outcome,'interrupted');assert.equal(run.records().length,0);
+  assert.equal(run.summary().correct,0);assert.equal(run.summary().abstained,0);assert.equal(run.summary().pending,6);
+});
+
+test('interrupting cleanup is idempotent and cannot resume or silently complete the retired trial',()=>{
+  const run=new GazeTrialRun(['left','right'],seeded(4),6),f=new GazeStability();f.enable(viewport);
+  run.begin(0);run.observe(f.observe(null,100,layout),100);
+  const partial=run.interrupt(200,'camera-stopped');
+  assert.equal(run.interrupt(300,'unmounted'),partial);
+  run.observe(stable(f,400),1000);
+  assert.deepEqual(run.interruption(),partial);assert.equal(run.summary().trackingLossEvents,1);
+  assert.throws(()=>run.begin(2000));assert.throws(()=>run.finish(4500));
+  assert.equal(run.summary().completed,0);assert.equal(run.summary().interrupted,1);
+});
+
+test('interruption timestamps cannot predate evidence, while stopping after a completed run leaves results intact',()=>{
+  const run=new GazeTrialRun(['left','right'],seeded(4),6),f=new GazeStability();f.enable(viewport);
+  assert.equal(run.interrupt(0,'camera-stopped'),null);
+  run.begin(0);run.observe(f.observe(null,200,layout),200);
+  assert.throws(()=>run.interrupt(100,'camera-stopped'));
+  assert.equal(run.interruption(),null);run.finish(4500);
+  for(let i=1;i<6;i++){run.begin(i*4500);run.finish((i+1)*4500);}
+  const before=run.summary();assert.equal(run.interrupt(30000,'camera-stopped'),null);assert.deepEqual(run.summary(),before);
+});
+
+test('one interrupted acceptance trial cannot turn twenty-seven completed successes into a pass',()=>{
+  const run=new GazeTrialRun(['left','right'],seeded(2)),f=new GazeStability();f.enable(viewport);
+  for(let i=0;i<27;i++){
+    const start=i*4500,trial=run.begin(start);f.reset(start);
+    run.observe(stable(f,start,trial.promptedRegion==='left'?200:750),start+600);run.finish(start+4500);
+  }
+  run.begin(27*4500);run.interrupt(27*4500+100,'viewport-changed');
+  assert.equal(run.summary().correct,27);assert.equal(run.summary().pending,3);assert.equal(run.summary().interrupted,1);
+  assert.equal(run.summary().pilotGoalMet,false);assert.equal(run.summary().abstained,0);
+});
+
+test('four expected acquisition frames at150ms cadence are not evidence of spatial instability',()=>{
+  const f=new GazeStability();f.enable(viewport);
+  const snapshots=[];
+  for(let t=0;t<=600;t+=150)snapshots.push(f.observe(sample(t),t+20,layout));
+  assert.deepEqual(snapshots.map(x=>x.reason),['collecting','collecting','collecting','collecting','stable']);
+  assert.equal(snapshots.at(-1)?.regionId,'left');assert.equal(snapshots.at(-1)?.stabilizationMs,600);
+  assert.ok(snapshots.every(x=>x.dispersionPx===0));
+});
+
+
+test('target-layout drift has its own unscored interruption reason',()=>{
+  const run=new GazeTrialRun(['left','right'],seeded(3),6);run.begin(0);
+  const interruption=run.interrupt(700,'target-layout-changed');
+  assert.equal(interruption?.reason,'target-layout-changed');assert.equal(run.summary().completed,0);
+  assert.equal(run.summary().pending,6);assert.equal(run.summary().abstained,0);
 });

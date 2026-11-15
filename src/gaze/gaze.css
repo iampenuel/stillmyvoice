@@ -53,3 +53,10 @@
 .gaze-readouts { margin-top:6px; }
 .gaze-diagnostics dl { margin:8px 0; }
 .gaze-diagnostics pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+/* Reserve the same control and prompt geometry before and throughout measurement. */
+.gaze-trial-prompt { min-height:2.5em; display:flex; align-items:center; }
+.gaze-test-regions { flex:none; height:240px; }
+.gaze-geometry-status { font-size:13px; color:var(--muted); }
+.gaze-geometry-evidence pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
+.gaze-experiment[data-trial-active="true"] .gaze-diagnostics details,
+.gaze-experiment[data-trial-active="true"] .gaze-geometry-evidence { visibility:hidden; }

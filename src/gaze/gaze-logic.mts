@@ -191,21 +191,30 @@ export type GazeTrialResult = Readonly<{
   trial: number; promptedRegion: string; predictedRegion: string | null; outcome: 'correct' | 'incorrect' | 'abstained';
   trackingLossEvents: number; stabilizationMs: number | null; startedAt: number; endedAt: number;
 }>;
+export type GazeTrialInterruptionReason = 'user-stopped' | 'camera-stopped' | 'viewport-changed' | 'target-layout-changed' | 'page-hidden'
+  | 'stream-interrupted' | 'tracking-failed' | 'calibration-reset' | 'unmounted';
+/** An unfinished exposure is evidence, but it is not a scored trial outcome. */
+export type GazeTrialInterruption = Readonly<{
+  trial: number; promptedRegion: string; predictedRegion: string | null; outcome: 'interrupted';
+  trackingLossEvents: number; stabilizationMs: number | null; startedAt: number; interruptedAt: number;
+  reason: GazeTrialInterruptionReason;
+}>;
 export type GazeTrialSummary = Readonly<{
-  denominator: GazeTrialCount; completed: number; pending: number; correct: number; incorrect: number; abstained: number;
+  denominator: GazeTrialCount; completed: number; pending: number; interrupted: 0 | 1; correct: number; incorrect: number; abstained: number;
   correctFraction: number; trackingLossEvents: number; pilotGoalMet: boolean;
 }>;
 export class GazeTrialRun {
   readonly plan: readonly string[];
   readonly count: GazeTrialCount;
   private results: GazeTrialResult[] = [];
+  private partial: GazeTrialInterruption | null = null;
   private current: { startedAt: number; predictedRegion: string | null; stabilizationMs: number | null; trackingLossEvents: number; wasLost: boolean; lastObservedAt: number } | null = null;
   constructor(regionIds: readonly string[], random: () => number = Math.random, count: GazeTrialCount = 30) {
     this.plan=balancedTrialPlan(regionIds,count,random); this.count=count;
   }
   /** Reset GazeStability history at each prompt; never reuse the preceding trial's fixation. */
   begin(now: number): Readonly<{ trial:number; promptedRegion:string; startedAt:number }> {
-    if (!time(now) || this.current || this.results.length>=this.count || (this.results.length && now<this.results.at(-1)!.endedAt)) throw Error('Invalid trial start');
+    if (!time(now) || this.current || this.partial || this.results.length>=this.count || (this.results.length && now<this.results.at(-1)!.endedAt)) throw Error('Invalid trial start');
     this.current={startedAt:now,predictedRegion:null,stabilizationMs:null,trackingLossEvents:0,wasLost:false,lastObservedAt:now};
     return Object.freeze({trial:this.results.length+1,promptedRegion:this.plan[this.results.length],startedAt:now});
   }
@@ -222,7 +231,8 @@ export class GazeTrialRun {
       trial.predictedRegion=snapshot.regionId; trial.stabilizationMs=now-trial.startedAt;
     }
   }
-  /** Finish explicitly or at the experiment's fixed trial deadline; missing estimates abstain. */
+  /** Score only at the experiment's completed trial deadline; missing estimates abstain.
+   * User Stop, camera loss and geometry changes must call interrupt(), not finish(). */
   finish(now: number): GazeTrialResult {
     const trial=this.current; if (!trial || !time(now) || now<trial.lastObservedAt) throw Error('Invalid trial finish');
     const promptedRegion=this.plan[this.results.length];
@@ -231,11 +241,25 @@ export class GazeTrialRun {
       trackingLossEvents:trial.trackingLossEvents,stabilizationMs:trial.stabilizationMs,startedAt:trial.startedAt,endedAt:now});
     this.results.push(result); this.current=null; return result;
   }
+  /** Retire this run without converting a partial exposure into a correct/incorrect/abstained trial.
+   * Repeated cleanup is idempotent. A new calibrated run is required to retry. */
+  interrupt(now: number, reason: GazeTrialInterruptionReason = 'user-stopped'): GazeTrialInterruption | null {
+    if (this.partial) return this.partial;
+    const trial=this.current; if (!trial) return null;
+    if (!time(now) || now<trial.lastObservedAt || !['user-stopped','camera-stopped','viewport-changed','target-layout-changed','page-hidden','stream-interrupted','tracking-failed','calibration-reset','unmounted'].includes(reason)) {
+      throw Error('Invalid trial interruption');
+    }
+    this.partial=Object.freeze({trial:this.results.length+1,promptedRegion:this.plan[this.results.length],predictedRegion:trial.predictedRegion,
+      outcome:'interrupted',trackingLossEvents:trial.trackingLossEvents,stabilizationMs:trial.stabilizationMs,
+      startedAt:trial.startedAt,interruptedAt:now,reason});
+    this.current=null; return this.partial;
+  }
+  interruption(): GazeTrialInterruption | null { return this.partial; }
   records(): readonly GazeTrialResult[] { return Object.freeze([...this.results]); }
   summary(): GazeTrialSummary {
     const correct=this.results.filter(r=>r.outcome==='correct').length;
-    return Object.freeze({denominator:this.count,completed:this.results.length,pending:this.count-this.results.length,correct,
+    return Object.freeze({denominator:this.count,completed:this.results.length,pending:this.count-this.results.length,interrupted:this.partial ? 1 : 0,correct,
       incorrect:this.results.filter(r=>r.outcome==='incorrect').length,abstained:this.results.filter(r=>r.outcome==='abstained').length,
-      correctFraction:correct/this.count,trackingLossEvents:this.results.reduce((n,r)=>n+r.trackingLossEvents,0),pilotGoalMet:this.count===30&&this.results.length===30&&correct>=27});
+      correctFraction:correct/this.count,trackingLossEvents:this.results.reduce((n,r)=>n+r.trackingLossEvents,0)+(this.partial?.trackingLossEvents??0),pilotGoalMet:!this.partial&&this.count===30&&this.results.length===30&&correct>=27});
   }
 }

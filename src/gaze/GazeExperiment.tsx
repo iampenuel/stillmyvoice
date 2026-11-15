@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { createCameraSession } from './camera-session.mts';
 import { RealEyeTrackerAdapter, type TrackerCalibration } from './tracker-adapter';
-import { GazeStability, GazeTrialRun, type GazePoint, type GazeSnapshot, type GazeTrialResult, type GazeViewport } from './gaze-logic.mts';
+import { GazeStability, GazeTrialRun, type GazePoint, type GazeSnapshot, type GazeTrialResult, type GazeViewport, type GazeLayout, type GazeTrialInterruption, type GazeTrialInterruptionReason } from './gaze-logic.mts';
 import { GazeDiagnostics, viewportChanged, sampleDelay } from './gaze-diagnostics.mts';
+import { GazeGeometryLog, geometryViewport, sameRegions, type Geometry } from './gaze-geometry.mts';
 import './gaze.css';
 
 const viewport = (): GazeViewport => ({ width: innerWidth, height: innerHeight,
-  key: [innerWidth, innerHeight, devicePixelRatio, visualViewport?.scale ?? 1].join(':') });
+  key: [innerWidth,innerHeight,devicePixelRatio,visualViewport?.width??innerWidth,visualViewport?.height??innerHeight,
+    visualViewport?.scale??1,visualViewport?.offsetLeft??0,visualViewport?.offsetTop??0].join(':') });
 const TRIAL_MS = 4500, SETTLE_MS = 1400, SAMPLE_MS = 150;
 type Calibration = { points: GazePoint[]; index: number; since: number; accepted: number; phase: 'collecting' | 'training' };
 type Readout = { status: string; detail: string; camera: string; delegate: string; face: boolean; calibrated: boolean;
   calibrationPoint: GazePoint | null; calibrationIndex: number; captured: number; inferenceMs: number | null;
-  snapshot: GazeSnapshot | null; diagnostics: ReturnType<GazeDiagnostics['snapshot']>; viewportChange: string | null; calibrationFit:TrackerCalibration|null; resultDiagnostics:ReturnType<GazeDiagnostics['snapshot']>|null; resultFit:TrackerCalibration|null; denominator: 6 | 30; trial: number; prompted: string | null; results: readonly GazeTrialResult[] };
+  geometryReady:boolean; geometryEvidence:ReturnType<GazeGeometryLog['snapshot']>|null; resultGeometry:ReturnType<GazeGeometryLog['snapshot']>|null; measurementLayout:GazeLayout|null; interruption:GazeTrialInterruption|null; snapshot: GazeSnapshot | null; diagnostics: ReturnType<GazeDiagnostics['snapshot']>; viewportChange: string | null; calibrationFit:TrackerCalibration|null; resultDiagnostics:ReturnType<GazeDiagnostics['snapshot']>|null; resultFit:TrackerCalibration|null; denominator: 6 | 30; trial: number; prompted: string | null; results: readonly GazeTrialResult[] };
 const initial = (): Readout => ({ status:'Camera off', detail:'Camera use starts only when you choose Start eye gaze.',
   camera:'Off', delegate:'Not initialized', face:false, calibrated:false, calibrationPoint:null, calibrationIndex:0,
-  captured:0, inferenceMs:null, snapshot:null, diagnostics:new GazeDiagnostics().snapshot(), viewportChange:null, calibrationFit:null,resultDiagnostics:null,resultFit:null,denominator:6, trial:0, prompted:null, results:[] });
+  captured:0, inferenceMs:null, geometryReady:false,geometryEvidence:null,resultGeometry:null,measurementLayout:null,interruption:null,snapshot:null, diagnostics:new GazeDiagnostics().snapshot(), viewportChange:null, calibrationFit:null,resultDiagnostics:null,resultFit:null,denominator:6, trial:0, prompted:null, results:[] });
 
 /** Isolated feasibility route. No communication model, scanner, serial, AI or speech authority. */
 export function GazeExperiment() {
@@ -28,26 +30,43 @@ export function GazeExperiment() {
     tracker:null as RealEyeTrackerAdapter | null, canvas:null as HTMLCanvasElement | null,
     pending:null as Promise<unknown> | null, points:[] as GazePoint[], calibration:null as Calibration | null,
     calibrated:false, calibrating:false, calibrationViewport:null as GazeViewport | null, filter:new GazeStability(),
-    run:null as GazeTrialRun | null, trialStarted:0, trialSettled:false, lastUi:0, face:false, diagnostics:new GazeDiagnostics(), lastCaptureAt:0, calibrationFit:null as TrackerCalibration|null });
+    run:null as GazeTrialRun | null, trialStarted:0, trialSettled:false, lastUi:0, face:false, diagnostics:new GazeDiagnostics(), lastCaptureAt:0, geometry:new GazeGeometryLog(), geometryReady:false,measurementLayout:null as GazeLayout|null,calibrationFit:null as TrackerCalibration|null });
   const mounted = useRef(true);
   const update = (patch: Partial<Readout>) => { if (mounted.current) setView(old=>({...old,...patch})); };
   const clearLoop = () => { const r=runtime.current; r.generation++; if(r.timer)clearTimeout(r.timer); r.timer=null; };
-  const release = (expected?:RealEyeTrackerAdapter) => {
+  const release = (expected?:RealEyeTrackerAdapter,reason:GazeTrialInterruptionReason='camera-stopped') => {
     const r=runtime.current;if(expected&&r.tracker!==expected)return; clearLoop(); r.tracker?.dispose(); r.tracker=null; r.pending=null;
     r.calibration=null; r.calibrating=false; r.calibrated=false; r.calibrationViewport=null; r.filter.disable(); r.face=false;
-    if(r.run) { try{r.run.finish(performance.now());}catch{/* no active trial */} update({results:r.run.records(),resultDiagnostics:r.diagnostics.snapshot(),resultFit:r.calibrationFit}); r.run=null; }
+    if(r.run) { r.run.interrupt(performance.now(),reason);update({results:r.run.records(),interruption:r.run.interruption(),resultDiagnostics:r.diagnostics.snapshot(),resultFit:r.calibrationFit,resultGeometry:r.geometry.snapshot(),geometryEvidence:r.geometry.snapshot()});r.run=null; }
     if(video.current){video.current.pause();video.current.srcObject=null;}
     if(r.canvas){r.canvas.width=0;r.canvas.height=0;}r.canvas=null;
     update({calibrated:false,calibrationPoint:null,prompted:null,snapshot:null,face:false,camera:'Off',diagnostics:r.diagnostics.snapshot()});
   };
-  const stop = (detail='Camera stopped. Calibration frames and model state were discarded.') => {
-    session.current?.stop(); release(); update({status:'Camera off',detail});
+  const stop = (detail='Camera stopped. Calibration frames and model state were discarded.',reason:GazeTrialInterruptionReason='camera-stopped') => {
+    release(undefined,reason);session.current?.stop();update({status:'Camera off',detail,geometryEvidence:runtime.current.geometry.snapshot()});
   };
-  const fail = (detail:string) => { stop(detail); update({status:'Gaze unavailable',detail}); };
+  const fail = (detail:string) => { stop(detail,'tracking-failed'); update({status:'Gaze unavailable',detail}); };
   const regions = () => [left,right].map((ref,i)=>{
     const b=ref.current?.getBoundingClientRect();
     return {id:i===0?'Left':'Right',left:b?.left??0,top:b?.top??0,width:b?.width??0,height:b?.height??0};
   });
+  const geometry = ():Geometry => ({innerWidth,innerHeight,outerWidth,outerHeight,pixelRatio:devicePixelRatio,
+    visual:{width:visualViewport?.width??innerWidth,height:visualViewport?.height??innerHeight,scale:visualViewport?.scale??1,offsetLeft:visualViewport?.offsetLeft??0,offsetTop:visualViewport?.offsetTop??0},
+    screen:{width:screen.width,height:screen.height,availableWidth:screen.availWidth,availableHeight:screen.availHeight},fullscreen:!!document.fullscreenElement,
+    document:{width:document.documentElement.clientWidth,height:document.documentElement.clientHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight},
+    scroll:{x:scrollX,y:scrollY},regions:regions()});
+  function checkGeometry(source='poll'){
+    const r=runtime.current,g=geometry(),now=performance.now();r.geometry.observe(source,g,now);
+    const ready=r.geometry.settled(now);if(ready!==r.geometryReady){r.geometryReady=ready;update({geometryReady:ready});}
+    if(r.tracker&&viewportChanged(r.calibrationViewport,geometryViewport(g))){
+      update({viewportChange:r.calibrationViewport!.key+' → '+geometryViewport(g).key});
+      stop('Interrupted: viewport geometry changed. Camera stopped; start again and recalibrate.','viewport-changed');return true;
+    }
+    if(r.run&&r.measurementLayout&&!sameRegions(r.measurementLayout.regions,g.regions)){
+      stop('Interrupted: target rectangles moved. Camera stopped; start again and recalibrate.','target-layout-changed');return true;
+    }
+    return false;
+  }
   const schedule = (generation:number) => {
     const r=runtime.current;
     if(generation===r.generation&&r.tracker&&!r.timer&&!r.pending)r.timer=setTimeout(()=>void tick(generation),sampleDelay(r.lastCaptureAt,performance.now(),SAMPLE_MS));
@@ -55,9 +74,9 @@ export function GazeExperiment() {
   async function tick(generation:number) {
     const r=runtime.current, tracker=r.tracker, element=video.current;
     if(generation!==r.generation||!tracker||!element)return;r.timer=null;
-    if(document.visibilityState!=='visible'){stop('Camera stopped because this page is hidden.');return;}
+    if(document.visibilityState!=='visible'){stop('Camera stopped because this page is hidden.','page-hidden');return;}
     const currentViewport=viewport();
-    if(checkViewport())return;
+    if(checkGeometry())return;
     advanceTrial(performance.now());
     if(element.readyState<2||!element.videoWidth||!element.videoHeight){r.lastCaptureAt=performance.now();schedule(generation);return;}
     const canvas=r.canvas??=document.createElement('canvas');
@@ -70,7 +89,10 @@ export function GazeExperiment() {
     const calibration=r.calibration;
     const target=calibration?.phase==='collecting' && capturedAt-calibration.since>=SETTLE_MS ? calibration.points[calibration.index] : undefined;
       const request=tracker.sample(frame,target);r.pending=request;const result=await request;
-      if(generation!==r.generation)return;r.pending=null;r.face=result.face;advanceTrial(performance.now());
+      if(generation!==r.generation)return;r.pending=null;
+      if(document.visibilityState!=='visible'){stop('Camera stopped because this page is hidden.','page-hidden');return;}
+      if(checkGeometry('prediction-completed'))return;
+      r.face=result.face;advanceTrial(performance.now());
       if(result.requiresCalibration){r.diagnostics.observe(result,capturedAt,performance.now(),{viewport:currentViewport,regions:regions()},null);stop('Camera frame dimensions changed. Start again and recalibrate.');return;}
       if(calibration){
         r.diagnostics.observe(result,capturedAt,performance.now(),{viewport:currentViewport,regions:regions()},null);
@@ -83,6 +105,8 @@ export function GazeExperiment() {
                 calibration.phase='training';update({status:'Calibrating',calibrationPoint:null,detail:'Fitting the calibration. Stop remains available.'});
                 const training=tracker.calibrate();r.pending=training;const trained=await training;
                 if(generation!==r.generation)return;
+                if(document.visibilityState!=='visible'){stop('Camera stopped because this page is hidden.','page-hidden');return;}
+                if(checkGeometry('calibration-completed'))return;
                 r.pending=null;r.calibration=null;r.calibrated=true;r.calibrationFit=trained;r.filter.enable(currentViewport);
                 update({status:'Tracking uncertain',calibrated:true,calibrationFit:trained,calibrationPoint:null,detail:'Calibration fit completed with '+trained.samples+' face-present frames. Accuracy still needs the region test.'});
               }else update({calibrationPoint:calibration.points[calibration.index],calibrationIndex:calibration.index+1});
@@ -92,7 +116,7 @@ export function GazeExperiment() {
             detail:result.face?'Look at the point. Timed capture checks face presence, not whether you are fixating.':'Face not detected. The current point will wait; reposition or stop and retry.'});
         }
       } else if(r.calibrated){
-        const now=performance.now(), layout={viewport:currentViewport,regions:regions()};advanceTrial(now);
+        const now=performance.now(), layout=r.measurementLayout&&r.run?r.measurementLayout:{viewport:currentViewport,regions:regions()};advanceTrial(now);
         let snapshot=r.filter.snapshot(now);
         const afterOrientation=!r.run||(r.trialSettled&&capturedAt>=r.trialStarted+SETTLE_MS);
         if(afterOrientation) {
@@ -102,9 +126,11 @@ export function GazeExperiment() {
           // Orientation is intentionally unclassified. Only a genuine invalid result is a loss.
           r.run.observe({...snapshot,status:result.uncertain?'lost':'uncertain',regionId:null},now);
         }
-        r.diagnostics.observe(result,capturedAt,now,layout,afterOrientation?snapshot:null);
+        const target=r.run?layout.regions.find(region=>region.id===r.run!.plan[r.run!.records().length]):null;
+        r.diagnostics.observe(result,capturedAt,now,layout,afterOrientation?snapshot:null,target?{
+          trial:r.run!.records().length+1,promptedRegion:target.id,targetPoint:{x:target.left+target.width/2,y:target.top+target.height/2},eligible:afterOrientation}:undefined);
         if(performance.now()-r.lastUi>=250){
-          r.lastUi=performance.now();update({face:result.face,snapshot,diagnostics:r.diagnostics.snapshot(),inferenceMs:result.inferenceMs,
+          r.lastUi=performance.now();r.diagnostics.recordReadout(capturedAt,r.lastUi);update({face:result.face,snapshot,diagnostics:r.diagnostics.snapshot(),inferenceMs:result.inferenceMs,
             status:snapshot.status==='tracking'?'Tracking':snapshot.status==='lost'?'Tracking lost':'Tracking uncertain',
             detail:r.run?'Look at the prompted region. Gaze does not select anything.':
               !result.face?'No face detected. No region is proposed.':result.headMoved?'Head position changed. No region is proposed.':'Region proposals use freshness and stability heuristics, not a confidence percentage.'});
@@ -121,17 +147,10 @@ export function GazeExperiment() {
     const r=runtime.current;if(!r.run)return;
     if(now>=r.trialStarted+TRIAL_MS){
       r.run.finish(r.trialStarted+TRIAL_MS);update({results:r.run.records()});
-      if(r.run.summary().completed===r.run.plan.length){const count=r.run.plan.length;update({resultDiagnostics:r.diagnostics.snapshot(),resultFit:r.calibrationFit});r.run=null;r.filter.reset(now);update({trial:count,prompted:null,diagnostics:r.diagnostics.snapshot(),detail:count+' trials complete. Every trial remains in the denominator.'});}
-      else {const next=r.run.begin(now);r.trialStarted=now;r.trialSettled=false;r.filter.reset(now);update({trial:next.trial,prompted:next.promptedRegion});}
+      if(r.run.summary().completed===r.run.plan.length){const count=r.run.plan.length;update({resultDiagnostics:r.diagnostics.snapshot(),resultFit:r.calibrationFit,resultGeometry:r.geometry.snapshot()});r.run=null;r.filter.reset(now);update({geometryEvidence:r.geometry.snapshot(),trial:count,prompted:null,diagnostics:r.diagnostics.snapshot(),detail:count+' trials complete. Every trial remains in the denominator.'});}
+      else {const next=r.run.begin(now);r.trialStarted=now;r.trialSettled=false;r.filter.reset(now);r.diagnostics.recordReset('trial-start');update({trial:next.trial,prompted:next.promptedRegion});}
     }
-    if(r.run&&!r.trialSettled&&now-r.trialStarted>=SETTLE_MS){r.trialSettled=true;r.filter.reset(now);}
-  }
-  function checkViewport(){
-    const r=runtime.current, current=viewport();
-    if(!r.tracker||!viewportChanged(r.calibrationViewport,current))return false;
-    const previous=r.calibrationViewport!;
-    update({viewportChange:previous.key+' → '+current.key});
-    stop('Viewport geometry changed. Camera stopped; start again and recalibrate.');return true;
+    if(r.run&&!r.trialSettled&&now-r.trialStarted>=SETTLE_MS){r.trialSettled=true;r.filter.reset(now);r.diagnostics.recordReset('orientation-ended');}
   }
   useEffect(()=>{
     mounted.current=true;
@@ -159,32 +178,39 @@ export function GazeExperiment() {
       },
       timeoutMs:45000,
     });session.current=controller;
-    const hidden=()=>{if(['starting','initializing','ready'].includes(controller.state().phase)&&document.visibilityState!=='visible')stop('Camera stopped because this page is hidden.');};
+    const hidden=()=>{if(['starting','initializing','ready'].includes(controller.state().phase)&&document.visibilityState!=='visible')stop('Camera stopped because this page is hidden.','page-hidden');};
     const exiting=()=>stop('Camera stopped when leaving the experiment.');
-    const changed=()=>{checkViewport();};
+    const changed=()=>{checkGeometry('window.resize');};
+    const visualChanged=()=>{checkGeometry('visualViewport.resize');};
+    const scrolled=()=>{checkGeometry('document.scroll');};
+    const visualScrolled=()=>{checkGeometry('visualViewport.scroll');};
+    const fullscreen=()=>{checkGeometry('fullscreenchange');};
+    const observer=new ResizeObserver(()=>checkGeometry('ResizeObserver'));
+    [document.documentElement,left.current,right.current,document.querySelector('.gaze-controls')].forEach(element=>{if(element)observer.observe(element);});
     document.addEventListener('visibilitychange',hidden);window.addEventListener('pagehide',exiting);
-    window.addEventListener('resize',changed);window.visualViewport?.addEventListener('resize',changed);
+    window.addEventListener('resize',changed);window.visualViewport?.addEventListener('resize',visualChanged);
+    window.addEventListener('scroll',scrolled,{passive:true});window.visualViewport?.addEventListener('scroll',visualScrolled);document.addEventListener('fullscreenchange',fullscreen);
     const freshness=setInterval(()=>{
-      const r=runtime.current;if(!r.calibrated)return;const now=performance.now();advanceTrial(now);
-      const snapshot=r.filter.snapshot(now);
+      const r=runtime.current;if(checkGeometry())return;if(!r.calibrated)return;const now=performance.now();advanceTrial(now);
+      const snapshot=r.filter.snapshot(now);r.diagnostics.observeFilterPoll(snapshot);
       if(r.run&&r.trialSettled)r.run.observe(snapshot,now);
       if(snapshot.status==='lost'&&now-r.lastUi>=100){r.lastUi=now;update({snapshot,status:'Tracking lost',detail:'No fresh stable estimate. Gaze proposes no region.',diagnostics:r.diagnostics.snapshot()});}
     },100);
-    return ()=>{clearInterval(freshness);mounted.current=false;controller.stop();release();document.removeEventListener('visibilitychange',hidden);
-      window.removeEventListener('pagehide',exiting);window.removeEventListener('resize',changed);window.visualViewport?.removeEventListener('resize',changed);};
+    return ()=>{clearInterval(freshness);mounted.current=false;release(undefined,'unmounted');controller.stop();observer.disconnect();document.removeEventListener('visibilitychange',hidden);
+      window.removeEventListener('pagehide',exiting);window.removeEventListener('resize',changed);window.visualViewport?.removeEventListener('resize',visualChanged);window.removeEventListener('scroll',scrolled);window.visualViewport?.removeEventListener('scroll',visualScrolled);document.removeEventListener('fullscreenchange',fullscreen);};
     // The controller owns one explicit opt-in session. Current values live in refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
   useEffect(()=>{const dialog=calibrationDialog.current;if(view.calibrationPoint&&dialog&&!dialog.open)dialog.showModal();},[!!view.calibrationPoint]);
   async function start(){
     if(session.current&&!['off','unavailable'].includes(session.current.state().phase))return;
-    runtime.current.diagnostics=new GazeDiagnostics();runtime.current.lastCaptureAt=0;update({...initial(),results:view.results,resultDiagnostics:view.resultDiagnostics,resultFit:view.resultFit,denominator:view.denominator});setPreview(false);
+    runtime.current.diagnostics=new GazeDiagnostics();runtime.current.lastCaptureAt=0;update({...initial(),results:view.results,resultDiagnostics:view.resultDiagnostics,resultFit:view.resultFit,interruption:view.interruption,measurementLayout:view.measurementLayout,geometryEvidence:view.geometryEvidence,resultGeometry:view.resultGeometry,geometryReady:runtime.current.geometryReady,denominator:view.denominator});setPreview(false);
     if(!navigator.mediaDevices?.getUserMedia){fail('This browser does not provide camera access. Use Chrome on localhost.');return;}
     await session.current?.start();
     if(session.current?.state().phase==='ready'){const generation=runtime.current.generation;schedule(generation);}
   }
   async function calibrate(){
-    const r=runtime.current;if(!r.tracker||!r.face||r.calibrating||r.calibration)return;
+    const r=runtime.current;if(!r.tracker||!r.face||r.calibrating||r.calibration||checkGeometry('calibration-request')||!r.geometry.settled(performance.now()))return;
     r.calibrating=true;r.calibrated=false;r.calibrationFit=null;update({status:'Calibrating',calibrated:false,detail:'Preparing timed calibration.'});
     clearLoop();const generation=r.generation;
     try{
@@ -192,23 +218,27 @@ export function GazeExperiment() {
       const reset=r.tracker.reset();r.pending=reset;await reset;if(generation!==r.generation)return;r.pending=null;r.calibrating=false;
       r.calibrated=false;r.run=null;r.filter.disable();r.calibrationViewport=viewport();
       r.calibration={points:r.points,index:0,since:performance.now(),accepted:0,phase:'collecting'};
-      setPreview(false);update({status:'Calibrating',calibrated:false,captured:0,calibrationFit:null,resultDiagnostics:null,resultFit:null,calibrationPoint:r.points[0],calibrationIndex:1,trial:0,prompted:null,results:[],snapshot:null});
+      setPreview(false);update({status:'Calibrating',calibrated:false,captured:0,calibrationFit:null,resultDiagnostics:null,resultFit:null,resultGeometry:null,interruption:null,measurementLayout:null,calibrationPoint:r.points[0],calibrationIndex:1,trial:0,prompted:null,results:[],snapshot:null});
       schedule(generation);
     }catch{if(generation===r.generation)fail('Calibration could not start. Stop and retry.');}
   }
   function startTrials(count:6|30){
-    const r=runtime.current;if(!r.calibrated||r.run)return;
-    setPreview(false);r.filter.reset(performance.now());r.run=new GazeTrialRun(['Left','Right'],Math.random,count);r.diagnostics=new GazeDiagnostics();
+    const r=runtime.current;if(!r.calibrated||r.run||preview||checkGeometry('trial-request')||!r.geometry.settled(performance.now()))return;
+    const boxes=regions();
+    if(boxes.some(box=>box.left<0||box.top<0||box.left+box.width>innerWidth||box.top+box.height>innerHeight)){
+      update({detail:'Keep both test cards fully visible before starting. Resize before camera activation, then recalibrate.'});return;
+    }
+    setPreview(false);r.measurementLayout={viewport:viewport(),regions:regions()};r.geometry.observe('trial-start',geometry(),performance.now());r.filter.reset(performance.now());r.run=new GazeTrialRun(['Left','Right'],Math.random,count);r.diagnostics=new GazeDiagnostics();r.diagnostics.recordReset('trial-start');
     const first=r.run.begin(performance.now());r.trialStarted=first.startedAt;r.trialSettled=false;
-    update({denominator:count,trial:first.trial,prompted:first.promptedRegion,results:[],resultDiagnostics:null,resultFit:null,diagnostics:r.diagnostics.snapshot(),detail:'Look at the requested region. All '+count+' trials count, including abstentions.'});
+    update({measurementLayout:r.measurementLayout,interruption:null,denominator:count,trial:first.trial,prompted:first.promptedRegion,results:[],resultDiagnostics:null,resultFit:null,resultGeometry:null,diagnostics:r.diagnostics.snapshot(),detail:'Look at the requested region. All '+count+' trials count, including abstentions.'});
   }
   function stopTrials(){
     const r=runtime.current;if(!r.run)return;
-    r.run.finish(performance.now());update({results:r.run.records(),resultDiagnostics:r.diagnostics.snapshot(),resultFit:r.calibrationFit,prompted:null,detail:'Measurement stopped. Uncompleted trials are not reported as passed.'});r.run=null;r.filter.reset();
+    r.run.interrupt(performance.now(),'user-stopped');update({interruption:r.run.interruption(),geometryEvidence:r.geometry.snapshot(),resultGeometry:r.geometry.snapshot(),results:r.run.records(),resultDiagnostics:r.diagnostics.snapshot(),resultFit:r.calibrationFit,prompted:null,detail:'Measurement interrupted. Partial trials are separate from completed results.'});r.run=null;r.filter.reset();
   }
   const summary={completed:view.results.length,denominator:view.denominator,correct:view.results.filter(x=>x.outcome==='correct').length,
     incorrect:view.results.filter(x=>x.outcome==='incorrect').length,abstained:view.results.filter(x=>x.outcome==='abstained').length,
-    trackingLossEvents:view.results.reduce((n,x)=>n+x.trackingLossEvents,0)};
+    interrupted:view.interruption?1:0,pending:view.denominator-view.results.length,notStarted:view.denominator-view.results.length-(view.interruption?1:0),trackingLossEvents:view.results.reduce((n,x)=>n+x.trackingLossEvents,0)+(view.interruption?.trackingLossEvents??0)};
   const d=view.diagnostics;
   const ms=(value:number|null)=>value===null?'—':Math.round(value)+' ms';
   const active=!['Camera off','Gaze unavailable'].includes(view.status);
@@ -217,15 +247,16 @@ export function GazeExperiment() {
       <p>Local camera feasibility check. Looking never clicks, selects, or speaks.</p></header>
     <section className="gaze-controls" aria-label="Eye gaze controls">
       <div className="gaze-actions">
-        <button onClick={()=>void start()} disabled={active}>Start eye gaze</button>
-        <button onClick={()=>void calibrate()} disabled={!active||!view.face||!!view.calibrationPoint||view.status==='Calibrating'}>{view.calibrated?'Recalibrate':'Start calibration'}</button>
-        <button onClick={()=>startTrials(6)} disabled={!view.calibrated||!!view.prompted}>Start 6-trial diagnostic</button>
-        <button onClick={()=>startTrials(30)} disabled={!view.calibrated||!!view.prompted}>Start 30-trial region test</button>
-        {view.prompted?<button onClick={stopTrials}>Stop region test</button>:null}
+        <button onClick={()=>void start()} disabled={active||!view.geometryReady}>Start eye gaze</button>
+        <button onClick={()=>void calibrate()} disabled={!active||!view.face||!!view.calibrationPoint||view.status==='Calibrating'||!view.geometryReady||!!view.prompted}>{view.calibrated?'Recalibrate':'Start calibration'}</button>
+        <button onClick={()=>startTrials(6)} disabled={!view.calibrated||!!view.prompted||!view.geometryReady||preview}>Start 6-trial diagnostic</button>
+        <button disabled title="Deferred until the short diagnostic is reviewed">30-trial test deferred</button>
+        <button onClick={stopTrials} disabled={!view.prompted}>Stop region test</button>
         <button onClick={()=>stop()} disabled={!active}>Stop eye gaze</button>
       </div>
       <p role="status" aria-live="polite">{view.status}{view.status==='Calibrating'?' · Point '+view.calibrationIndex+' of 17 · '+view.captured+' / 85 frames':''}</p>
       <p className="small">{view.detail}</p>
+      <p className="gaze-geometry-status">{preview?'Hide the preview before starting trials. ':''}Geometry: {view.geometryReady?'settled for 2 seconds':'waiting to settle'}. Keep browser controls, zoom and window size unchanged.</p>
       <dl className="gaze-readouts"><div><dt>Camera</dt><dd>{view.camera}</dd></div><div><dt>Inference</dt><dd>{view.delegate}</dd></div>
         <div><dt>Stable region</dt><dd>{view.snapshot?.regionId??'None'}</dd></div><div><dt>Sample age</dt><dd>{view.snapshot?.ageMs==null?'—':Math.round(view.snapshot.ageMs)+' ms'}</dd></div>
         <div><dt>Dispersion</dt><dd>{view.snapshot?.dispersionPx==null?'—':Math.round(view.snapshot.dispersionPx)+' px'}</dd></div></dl>
@@ -257,12 +288,15 @@ export function GazeExperiment() {
       <details><summary>Diagnostic counters — no images</summary><pre>{JSON.stringify({counters:d,calibrationFit:view.calibrationFit},null,2)}</pre></details>
       <p>Counts reset at Start and at each trial run. “Tracking loss” includes stale or rejected estimates; it is not a face-loss count.</p>
     </section>
-    <div className="gaze-camera-preview"><button onClick={()=>setPreview(p=>!p)} disabled={!active}>{preview?'Hide camera preview':'Show camera preview'}</button>
+    <div className="gaze-camera-preview"><button onClick={()=>setPreview(p=>!p)} disabled={!active||!!view.prompted}>{preview?'Hide camera preview':'Show camera preview'}</button>
       <video ref={video} muted autoPlay playsInline hidden={!preview} aria-label="Local camera preview"/></div>
-    {view.results.length&&!view.prompted?<section className="gaze-results"><h2>Measured results</h2>
-      <p>{summary.correct}/{view.denominator} correct · {summary.incorrect} incorrect · {summary.abstained} abstained · {view.denominator-summary.completed} pending</p>
+    {(view.results.length||view.interruption)&&!view.prompted?<section className="gaze-results"><h2>{view.interruption?'Interrupted diagnostic':'Measured results'}</h2>
+      <p>{summary.correct}/{view.denominator} correct · {summary.incorrect} incorrect · {summary.abstained} abstained · {summary.pending} unfinished ({summary.interrupted} interrupted, {summary.notStarted} not started)</p>
       <p>{summary.trackingLossEvents} tracking-loss events. {view.denominator===30?'Pilot goal: at least 27/30 correct.':'Six trials are diagnostic only, not acceptance.'} This is not clinical validation.</p>
-      <details><summary>Trial records — no camera frames</summary><pre>{JSON.stringify({summary,diagnostics:view.resultDiagnostics,calibrationFit:view.resultFit,viewportChange:view.viewportChange,trials:view.results},null,2)}</pre></details></section>:null}
+      <details><summary>Trial records — no camera frames</summary><pre>{JSON.stringify({summary,diagnostics:view.resultDiagnostics,calibrationFit:view.resultFit,geometry:view.resultGeometry,measurementLayout:view.measurementLayout,interruption:view.interruption,trials:view.results},null,2)}</pre></details></section>:null}
+    <details className="gaze-geometry-evidence"><summary>Geometry event evidence — no images</summary>
+      <button disabled={active} onClick={()=>update({geometryEvidence:runtime.current.geometry.snapshot()})}>Inspect geometry events</button>
+      <pre>{JSON.stringify(view.geometryEvidence,null,2)}</pre><p>Event categories are evidence-based; the browser does not expose which toolbar changed or whether resizing was intentional.</p></details>
     <footer><p>Video frames and calibration stay in memory and are discarded when stopped. Measurement rows remain in this tab only.</p>
       <a href="/gaze/licenses/SMV-AGPL-3.0.txt">AGPL license</a><a href="/">Switch-only SMV</a></footer>
     {view.calibrationPoint?<dialog ref={calibrationDialog} className="gaze-calibration-layer" data-target-bottom={view.calibrationPoint.y>=innerHeight/2} aria-label="Timed calibration" onCancel={event=>{event.preventDefault();stop();}}>
