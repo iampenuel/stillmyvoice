@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGemini, normalizedGeminiError } from '../server/gemini.mts';
+import { createGemini, normalizedGeminiError, DEFAULT_GEMINI_REQUEST_LIMIT } from '../server/gemini.mts';
 import { ProviderError } from '../server/elevenlabs.mts';
 import { cloudFailure, requestStillCurrent } from '../src/communication/cloud-error.mts';
 import { Readable } from 'node:stream';
@@ -20,10 +20,11 @@ test('duplicates, busy work, cooldown and local cap have distinct evidence witho
   await assert.rejects(p.suggest(request(1), signal()), /ASSISTANCE_BUSY/);
   finish('{"suggestions":[]}'); await pending;
   await assert.rejects(p.suggest(request(1), signal()), e => e instanceof ProviderError && e.code === 'ASSISTANCE_COOLDOWN' && e.metadata?.retryAfterSeconds === 5);
-  for (let n = 1; n < 20; n++) { t.mock.timers.tick(5000); await p.suggest(request(n), signal()); }
-  t.mock.timers.tick(5000); await assert.rejects(p.suggest(request(20), signal()), /ASSISTANCE_SESSION_LIMIT/);
+  for (let n = 1; n < DEFAULT_GEMINI_REQUEST_LIMIT; n++) { t.mock.timers.tick(5000); await p.suggest(request(n), signal()); }
+  t.mock.timers.tick(5000); await assert.rejects(p.suggest(request(DEFAULT_GEMINI_REQUEST_LIMIT), signal()), /ASSISTANCE_SESSION_LIMIT/);
   const d = p.status().diagnostics;
-  assert.equal(p.status().requests, 20); assert.equal(d.providerCalls, 20); assert.equal(d.attempts, 24);
+  assert.equal(p.status().requests, DEFAULT_GEMINI_REQUEST_LIMIT); assert.equal(p.status().sessionLimit, 300);
+  assert.equal(d.providerCalls, DEFAULT_GEMINI_REQUEST_LIMIT); assert.equal(d.attempts, DEFAULT_GEMINI_REQUEST_LIMIT + 4);
   assert.equal(d.duplicate, 1); assert.equal(d.busy, 1); assert.equal(d.cooldown, 1); assert.equal(d.cap, 1); assert.equal(d.provider429, 0);
   assert.equal(d.lastError?.code, 'ASSISTANCE_SESSION_LIMIT'); assert.equal(d.lastError?.source, 'app');
   assert.equal(JSON.stringify(d).includes('diagnostic-fixture'), false); assert.equal(JSON.stringify(d).includes('hello'), false);
@@ -53,10 +54,10 @@ test('restart checkpoint preserves used allowance and invalid checkpoint fails c
   t.mock.timers.enable({ apis: ['Date'], now: 10000 });
   const p = createGemini({ ...env, SMV_GEMINI_START_REQUESTS: '3' }, async () => '{"suggestions":[]}');
   assert.equal(p.status().requests, 3); assert.equal(p.status().diagnostics.startingRequests, 3);
-  for (let n = 0; n < 17; n++) { await p.suggest(request(n), signal()); t.mock.timers.tick(5000); }
-  await assert.rejects(p.suggest(request(17), signal()), /ASSISTANCE_SESSION_LIMIT/);
-  assert.equal(p.status().requests, 20); assert.equal(p.status().diagnostics.providerCalls, 17);
-  for (const invalid of ['-1', '21', '3.5', '03', '', 'secret']) {
+  for (let n = 0; n < DEFAULT_GEMINI_REQUEST_LIMIT - 3; n++) { await p.suggest(request(n), signal()); t.mock.timers.tick(5000); }
+  await assert.rejects(p.suggest(request(DEFAULT_GEMINI_REQUEST_LIMIT - 3), signal()), /ASSISTANCE_SESSION_LIMIT/);
+  assert.equal(p.status().requests, DEFAULT_GEMINI_REQUEST_LIMIT); assert.equal(p.status().diagnostics.providerCalls, DEFAULT_GEMINI_REQUEST_LIMIT - 3);
+  for (const invalid of ['-1', '301', '3.5', '03', '', 'secret', '9007199254740992']) {
     const blocked = createGemini({ ...env, SMV_GEMINI_START_REQUESTS: invalid }, async () => { throw Error('Must not call'); });
     assert.equal(blocked.status().available, false); await assert.rejects(blocked.suggest(request(0), signal()), /GEMINI_DISABLED/);
   }
@@ -64,7 +65,12 @@ test('restart checkpoint preserves used allowance and invalid checkpoint fails c
 test('UI names each limit accurately and ignores arbitrary service messages', () => {
   assert.match(cloudFailure(429, { error: 'ASSISTANCE_COOLDOWN', retryAfterSeconds: 2 }), /wait 2 seconds/);
   assert.match(cloudFailure(409, { error: 'ASSISTANCE_BUSY' }), /still running/);
-  assert.match(cloudFailure(429, { error: 'ASSISTANCE_SESSION_LIMIT' }), /local demo allowance of 20/);
+  assert.match(cloudFailure(429, { error: 'ASSISTANCE_SESSION_LIMIT', sessionLimit: 300 }), /local demo allowance of 300 wording requests/);
+  assert.match(cloudFailure(429, { error: 'ASSISTANCE_SESSION_LIMIT', sessionLimit: 7 }), /of 7 wording requests/);
+  assert.match(cloudFailure(429, { error: 'ASSISTANCE_SESSION_LIMIT' }), /allowance for wording requests/);
+  for (const invalid of [0, -1, 3.5, '300', NaN, Infinity, 9007199254740992, 'secret']) {
+    assert.equal(cloudFailure(429, { error: 'ASSISTANCE_SESSION_LIMIT', sessionLimit: invalid }), cloudFailure(429, { error: 'ASSISTANCE_SESSION_LIMIT' }));
+  }
   assert.match(cloudFailure(409, { error: 'ASSISTANCE_ALREADY_REQUESTED' }), /no duplicate was sent/);
   assert.match(cloudFailure(429, { error: 'GEMINI_QUOTA', retryAfterSeconds: 4 }), /Gemini’s API/);
   assert.match(cloudFailure(429, { error: 'LOCAL_RATE_LIMIT' }), /local app/);
@@ -94,4 +100,39 @@ test('HTTP errors carry distinct safe reasons and bounded retry evidence', async
   const cooldown = await post(request(1)); assert.equal(cooldown.status, 429); assert.equal(cooldown.payload.error, 'ASSISTANCE_COOLDOWN');
   assert.equal(cooldown.payload.source, 'app'); assert.ok(Number(cooldown.payload.retryAfterSeconds) > 0 && Number(cooldown.payload.retryAfterSeconds) <= 5);
   assert.doesNotMatch(JSON.stringify(cooldown.payload), /hello|diagnostic-fixture|synthetic-fixture-key/);
+});
+
+test('configured request limits share the seed boundary and invalid configuration fails closed', async () => {
+  assert.equal(DEFAULT_GEMINI_REQUEST_LIMIT, 300);
+  for (const seed of ['0', '20', '21', '299', '300']) {
+    const p = createGemini({ ...env, SMV_GEMINI_START_REQUESTS: seed }, async () => '{"suggestions":[]}');
+    assert.equal(p.status().available, true); assert.equal(p.status().requests, Number(seed)); assert.equal(p.status().sessionLimit, 300);
+  }
+  let calls = 0;
+  const p = createGemini({ ...env, SMV_GEMINI_REQUEST_LIMIT: '7', SMV_GEMINI_START_REQUESTS: '6' }, async () => { calls++; return '{"suggestions":[]}'; });
+  await p.suggest(request(0), signal());
+  await assert.rejects(p.suggest(request(1), signal()), e => e instanceof ProviderError && e.code === 'ASSISTANCE_SESSION_LIMIT' && e.metadata?.source === 'app' && e.metadata.sessionLimit === 7);
+  assert.equal(calls, 1); assert.equal(p.status().requests, 7); assert.equal(p.status().sessionLimit, 7);
+  assert.equal(p.status().diagnostics.lastError?.sessionLimit, 7);
+  for (const change of [
+    ...['0', '-1', '3.5', '03', '', 'Infinity', 'secret', '9007199254740992'].map(value => ({ SMV_GEMINI_REQUEST_LIMIT: value })),
+    { SMV_GEMINI_REQUEST_LIMIT: '7', SMV_GEMINI_START_REQUESTS: '8' },
+  ]) {
+    let upstream = 0;
+    const blocked = createGemini({ ...env, ...change }, async () => { upstream++; return ''; });
+    assert.equal(blocked.status().available, false);
+    await assert.rejects(blocked.suggest(request(0), signal()), /GEMINI_DISABLED/); assert.equal(upstream, 0);
+  }
+});
+test('configured allowance crosses HTTP as numeric request metadata and reaches accurate UI copy', async () => {
+  const p = createGemini({ ...env, SMV_GEMINI_REQUEST_LIMIT: '7', SMV_GEMINI_START_REQUESTS: '7' }, async () => { throw Error('Must not call'); });
+  const handler = createApiHandler(createElevenLabs({}), p);
+  const req = Readable.from([Buffer.from(JSON.stringify(request(0)))]) as unknown as IncomingMessage;
+  Object.assign(req, { method: 'POST', url: '/api/suggestions', headers: { host: '127.0.0.1:5174', origin: 'http://127.0.0.1:5173', 'content-type': 'application/json' } });
+  let status = 0, payload: Record<string, unknown> = {};
+  const res = Object.assign(new EventEmitter(), { destroyed: false, writableEnded: false,
+    writeHead(code: number) { status = code; }, end(text: string) { payload = JSON.parse(text); this.writableEnded = true; } });
+  await handler(req, res as unknown as ServerResponse);
+  assert.equal(status, 429); assert.deepEqual(payload, { error: 'ASSISTANCE_SESSION_LIMIT', source: 'app', sessionLimit: 7 });
+  assert.match(cloudFailure(status, payload), /of 7 wording requests/); assert.equal(p.status().diagnostics.providerCalls, 0);
 });

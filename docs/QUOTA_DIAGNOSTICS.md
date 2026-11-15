@@ -1,3 +1,36 @@
+# Current local Gemini wording-request allowance — November 15, 2026
+
+The owner authorized raising the application allowance to **300 wording REQUESTS**, not tokens. `DEFAULT_GEMINI_REQUEST_LIMIT` in `server/gemini.mts` is the single default. An explicit server-process `SMV_GEMINI_REQUEST_LIMIT` may supply a positive safe integer; invalid configuration disables Gemini rather than silently accepting a malformed value. This local cap does not raise the upstream Gemini quota, change billing, or establish API entitlement from a consumer subscription.
+
+`SMV_GEMINI_START_REQUESTS` preserves the consumed request count across a controlled restart. It accepts canonical integers from zero through the configured limit; invalid or excessive values fail closed. Both values come from explicit operator process state through `server/environment.mts`, not the private `.env` key file. Existing message lengths, output token limit, model, free-tier/account gates, one in-flight request, five-second spacing, duplicate IDs, timeouts and no-retry policy are unchanged.
+
+API status reports `requests` and the resolved `sessionLimit`. A local-cap error includes sanitized numeric `sessionLimit` metadata; the UI states that exact number of **wording requests**, or uses generic local-allowance wording if the numeric metadata is absent/invalid. It never substitutes a client hardcoded limit. Provider 429 remains the separate `GEMINI_QUOTA` response.
+
+## Controlled restart procedure
+
+1. Read the current local `/api/status` response and wait for `inFlight:false`.
+2. Record the observed `gemini.requests` before stopping the old API process. Do not use zero or an earlier checkpoint.
+3. Start the same API with `SMV_GEMINI_START_REQUESTS=<observed requests>` and `SMV_GEMINI_REQUEST_LIMIT=300`, using the already-installed project Node environment.
+4. Confirm status preserves `requests` / `diagnostics.startingRequests` and reports `sessionLimit:300` before one deliberately authorized live check.
+
+The coordinating agent's pre-restart read reported requests 20 / sessionLimit 20, startingRequests 18, providerCalls 2, attempts 4, cap 2, provider429 0, no in-flight work and no cooldown. The controlled restart explicitly carried **20 consumed requests** into the new process; the initial new status confirmed requests 20, startingRequests 20 and sessionLimit 300. ElevenLabs and Scribe have separate process-local counters and currently no restart seeds; their counters must not be represented as preserved merely because Gemini's seed is preserved.
+
+## Actual post-restart live check
+
+The coordinating agent made exactly one controlled fictional expansion after verifying the carried checkpoint: `please repeat slowly` returned `Please repeat slowly.` with HTTP 200. Diagnostics recorded one upstream Gemini call, 1,166 ms provider latency and 1,168 ms total latency. The resulting local counter was **21/300**, leaving **279 local wording requests**; provider429 remained zero. This establishes the exercised request path after the local-cap change, not general wording accuracy or a guaranteed upstream allowance. No speech authorization follows from the expansion result.
+
+The StillMyVoice project's Google AI Studio dashboard was separately observed as **Free tier** for Gemini 3.5 Flash Lite, displaying **15 RPM**, **250K TPM** and **500 RPD**. Its 28-day peak display showed 20/500, with an offline banner and a 15-minute reporting-delay notice. These are a dashboard snapshot, not proof of live remaining quota; 20/500 must not be interpreted as 480 requests currently available. No billing, key, model or provider-quota setting was changed. The local 300-request cap and the provider's displayed limits are different controls.
+
+For another controlled restart, read the newest current counter; **21**, not 20 or 0, is the last verified checkpoint from this test.
+
+## Mocked verification
+
+36 targeted tests passed: the default 300-request boundary, configurable lower cap, seeds through 300, invalid limits/seeds, HTTP-to-UI numeric cap metadata, shared suggestion/expansion allowance, duplicate/in-flight/cooldown distinctions, actual provider-quota error normalization, cancellation, no retry and unchanged request/response bounds. These mocks do not consume a provider allowance and are not live-model evidence.
+
+## Historical 20-request checkpoint
+
+The following report is retained as historical evidence. Its observed counts and old 20-request implementation describe that earlier checkpoint, not the current default.
+
 # Gemini quota diagnosis — bounded local follow-up
 
 November 14, 2026, Eastern. The owner clarified Google AI Plus, not Pro. Consumer subscription benefits are not used as API entitlement. The existing private key, direct Gemini 3.5 Flash Lite free-tier gate and billing restrictions are preserved.

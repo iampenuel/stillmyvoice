@@ -14,6 +14,8 @@ export function serverEnvironment(contents: string, inherited: Record<string, st
     // Carry already-consumed local budget across a controlled diagnostic restart.
     // This is operator state, never an owner .env flag or a billing entitlement.
     SMV_GEMINI_START_REQUESTS: inherited.SMV_GEMINI_START_REQUESTS,
+    // Local wording-request cap; separate from provider quota, keys and billing.
+    SMV_GEMINI_REQUEST_LIMIT: inherited.SMV_GEMINI_REQUEST_LIMIT,
     GEMINI_API_KEY: local.GEMINI_API_KEY ?? inherited.GEMINI_API_KEY,
     ELEVENLABS_API_KEY: local.ELEVENLABS_API_KEY ?? inherited.ELEVENLABS_API_KEY,
     SMV_CLOUD_MODE: protections.elevenlabs || protections.gemini ? 'local-synthetic-demo' : 'disabled',

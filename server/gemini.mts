@@ -2,6 +2,8 @@
 import { ProviderError, type ErrorMetadata } from './elevenlabs.mts';
 import { expansionInstruction, expansionSchema, knownAmbiguity, validateExpansion, validateExpansionRequest, type ExpansionResult } from './expansion.mts';
 export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+/** Local wording REQUESTS, not tokens or an upstream Gemini quota entitlement. */
+export const DEFAULT_GEMINI_REQUEST_LIMIT = 300;
 export const kinds = ['contextual_response', 'spelling_correction', 'clarification', 'wording_alternative', 'continuation'] as const;
 export type Kind = typeof kinds[number];
 export type Suggestion = { text: string; kind: Kind };
@@ -83,10 +85,13 @@ export function createGemini(env: Record<string, string | undefined>, generate: 
     && env.GOOGLE_GENAI_USE_VERTEXAI !== 'true';
   const free = env.SMV_GEMINI_FREE_TIER_CONFIRMED === 'true';
   const approvedModel = !env.SMV_GEMINI_MODEL || env.SMV_GEMINI_MODEL === GEMINI_MODEL;
+  const configuredLimit = env.SMV_GEMINI_REQUEST_LIMIT ?? String(DEFAULT_GEMINI_REQUEST_LIMIT);
+  const validLimit = /^[1-9][0-9]*$/.test(configuredLimit) && Number.isSafeInteger(Number(configuredLimit));
+  const requestLimit = validLimit ? Number(configuredLimit) : DEFAULT_GEMINI_REQUEST_LIMIT;
   const seed = env.SMV_GEMINI_START_REQUESTS ?? '0';
-  const validSeed = /^(?:[0-9]|1[0-9]|20)$/.test(seed);
-  const startingRequests = validSeed ? Number(seed) : 20;
-  const enabled = Boolean(mode && free && approvedModel && validSeed && key && key.length >= 12 && !/\s/.test(key));
+  const validSeed = /^(?:0|[1-9][0-9]*)$/.test(seed) && Number.isSafeInteger(Number(seed)) && Number(seed) <= requestLimit;
+  const startingRequests = validSeed ? Number(seed) : requestLimit;
+  const enabled = Boolean(mode && free && approvedModel && validLimit && validSeed && key && key.length >= 12 && !/\s/.test(key));
   let calls = startingRequests, busy = false, lastStarted = -Infinity; const consumed = new Set<string>();
   const counters = { attempts: 0, providerCalls: 0, duplicate: 0, cooldown: 0, cap: 0, busy: 0, provider429: 0 };
   let lastError: ({ code: string; status: number } & ErrorMetadata) | null = null;
@@ -105,7 +110,7 @@ export function createGemini(env: Record<string, string | undefined>, generate: 
     if (!enabled) throw remember(new ProviderError('GEMINI_DISABLED', 403));
     signal.throwIfAborted();
     if (consumed.has(id)) { counters.duplicate++; throw remember(new ProviderError('ASSISTANCE_ALREADY_REQUESTED', 409, { source: 'app' })); }
-    if (calls >= 20) { counters.cap++; throw remember(new ProviderError('ASSISTANCE_SESSION_LIMIT', 429, { source: 'app' })); }
+    if (calls >= requestLimit) { counters.cap++; throw remember(new ProviderError('ASSISTANCE_SESSION_LIMIT', 429, { source: 'app', sessionLimit: requestLimit })); }
     if (busy) { counters.busy++; throw remember(new ProviderError('ASSISTANCE_BUSY', 409, { source: 'app' })); }
     const remaining = 5000 - (Date.now() - lastStarted);
     if (remaining > 0) { counters.cooldown++; throw remember(new ProviderError('ASSISTANCE_COOLDOWN', 429, { source: 'app', retryAfterSeconds: Math.ceil(remaining / 1000) })); }
@@ -126,7 +131,7 @@ export function createGemini(env: Record<string, string | undefined>, generate: 
   };
   return {
     status: () => ({ available: enabled, model: GEMINI_MODEL, reason: !mode ? 'Cloud disabled' : !free ? 'Free tier / no billing unconfirmed'
-      : !validSeed ? 'Request budget checkpoint invalid' : !approvedModel ? 'Model not approved' : !key ? 'API key missing' : enabled ? 'Configured — live verification required' : 'Invalid key configuration', requests: calls, sessionLimit: 20,
+      : !validLimit ? 'Request limit configuration invalid' : !validSeed ? 'Request budget checkpoint invalid' : !approvedModel ? 'Model not approved' : !key ? 'API key missing' : enabled ? 'Configured — live verification required' : 'Invalid key configuration', requests: calls, sessionLimit: requestLimit,
       diagnostics: { startingRequests, ...counters, inFlight: busy, cooldownSeconds: Math.max(0, Math.ceil((5000 - (Date.now() - lastStarted)) / 1000)), lastError: lastError ? { ...lastError } : null, lastRequest: lastRequest ? { ...lastRequest } : null } }),
     async suggest(value: unknown, signal: AbortSignal): Promise<Suggestion[]> {
       if (!enabled) throw new ProviderError('GEMINI_DISABLED', 403);

@@ -2,10 +2,11 @@
 export function cloudFailure(status: number, payload: unknown): string {
   const data = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
   const retry = Number.isInteger(data.retryAfterSeconds) && Number(data.retryAfterSeconds) >= 0 && Number(data.retryAfterSeconds) <= 86400 ? Number(data.retryAfterSeconds) : null;
+  const limit = Number.isSafeInteger(data.sessionLimit) && Number(data.sessionLimit) > 0 ? Number(data.sessionLimit) : null;
   switch (data.error) {
     case 'ASSISTANCE_COOLDOWN': return `Please wait ${retry ?? 5} seconds before another wording request. Your words are kept.`;
     case 'ASSISTANCE_BUSY': return 'Another wording request is still running. Your words are kept.';
-    case 'ASSISTANCE_SESSION_LIMIT': return 'The local demo allowance of 20 wording requests is used. Continue with your own words.';
+    case 'ASSISTANCE_SESSION_LIMIT': return `The local demo allowance${limit !== null ? ` of ${limit} wording requests` : ' for wording requests'} is used. Continue with your own words.`;
     case 'ASSISTANCE_ALREADY_REQUESTED': return 'That wording request was already used. Your words are kept; no duplicate was sent.';
     case 'GEMINI_QUOTA': return `Gemini’s API rate or quota limit was reached.${retry !== null ? ` The provider reports ${retry} seconds before another request.` : ''} Your words are kept.`;
     case 'LOCAL_RATE_LIMIT': return `The local app is receiving requests too quickly.${retry !== null ? ` Wait ${retry} seconds.` : ''} Your words are kept.`;

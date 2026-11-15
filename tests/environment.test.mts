@@ -22,3 +22,8 @@ test('controlled restart budget comes only from explicit operator state, not the
   assert.equal(serverEnvironment('SMV_GEMINI_START_REQUESTS=0', { SMV_GEMINI_START_REQUESTS: '3' }).SMV_GEMINI_START_REQUESTS, '3');
   assert.equal(serverEnvironment('SMV_GEMINI_START_REQUESTS=0').SMV_GEMINI_START_REQUESTS, undefined);
 });
+
+test('local wording-request limit is explicit server operator configuration, never a private-key-file flag', () => {
+  assert.equal(serverEnvironment('SMV_GEMINI_REQUEST_LIMIT=999', { SMV_GEMINI_REQUEST_LIMIT: '300' }).SMV_GEMINI_REQUEST_LIMIT, '300');
+  assert.equal(serverEnvironment('SMV_GEMINI_REQUEST_LIMIT=999').SMV_GEMINI_REQUEST_LIMIT, undefined);
+});

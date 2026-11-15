@@ -7,7 +7,7 @@ export type { PremiumVoice } from '../src/communication/cloud-contract.mts';
 export const modelForVoice = (id: string): string => id === 'bQxW1c7YCr6VQgQhw8KX' ? 'eleven_flash_v2' : PREMIUM_MODEL;
 const modelLabel = (id: string) => modelForVoice(id) === 'eleven_flash_v2' ? 'Flash v2 · English' : 'Flash v2.5';
 
-export type ErrorMetadata = Readonly<{ source: 'app' | 'provider'; retryAfterSeconds?: number; providerHttpStatus?: number; providerStatus?: string; quotaMetrics?: readonly string[] }>;
+export type ErrorMetadata = Readonly<{ source: 'app' | 'provider'; sessionLimit?: number; retryAfterSeconds?: number; providerHttpStatus?: number; providerStatus?: string; quotaMetrics?: readonly string[] }>;
 export class ProviderError extends Error {
   readonly status: number;
   readonly code: string;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGemini } from '../server/gemini.mts';
+import { createGemini, DEFAULT_GEMINI_REQUEST_LIMIT } from '../server/gemini.mts';
 import { acceptableExpansion, knownAmbiguity, validateExpansion, validateExpansionRequest } from '../server/expansion.mts';
 import type { ExpansionRequest, ExpansionResult } from '../src/communication/expansion-contract.mts';
 const request: ExpansionRequest={id:'fictional-expansion:1',text:'belly hurts weak today',context:'healthcare',clarification:'',synthetic:true};
@@ -77,9 +77,9 @@ test('suggestion and expansion routes share one free-tier gate, quota and identi
   await assert.rejects(p.suggest({id:'fictional-suggestion:2',text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_COOLDOWN/);
   t.mock.timers.tick(5000);
   await assert.rejects(p.suggest({id:request.id,text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_ALREADY_REQUESTED/);
-  for(let i=1;i<20;i++){await p.expand({...request,id:'fictional-expanded:'+i},signal);t.mock.timers.tick(5000);}
-  await assert.rejects(p.suggest({id:'fictional-final:21',text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_SESSION_LIMIT/);
-  assert.equal(calls,20);assert.equal(p.status().requests,20);
+  for(let i=1;i<DEFAULT_GEMINI_REQUEST_LIMIT;i++){await p.expand({...request,id:'fictional-expanded:'+i},signal);t.mock.timers.tick(5000);}
+  await assert.rejects(p.suggest({id:'fictional-final:301',text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_SESSION_LIMIT/);
+  assert.equal(calls,DEFAULT_GEMINI_REQUEST_LIMIT);assert.equal(p.status().requests,DEFAULT_GEMINI_REQUEST_LIMIT);
   await assert.rejects(createGemini({...env,SMV_GEMINI_FREE_TIER_CONFIRMED:'false'},async()=>{throw Error();}).expand(request,signal),/GEMINI_DISABLED/);
 });
 test('canceled or timed-out expansion discards late completion and never retries',async()=>{
