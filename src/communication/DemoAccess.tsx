@@ -39,9 +39,10 @@ export function DemoAccess({ onChanged }: { onChanged: () => void }) {
     }
   }
   useEffect(() => { void update('GET'); return () => { request.current?.abort(); }; }, []);
-  return <section aria-labelledby="demo-access-title">
+  return <section id="demo-access" tabIndex={-1} aria-labelledby="demo-access-title">
     <h3 id="demo-access-title">Demo access</h3>
     <p role="status">{notice}</p>
+    <p>Access applies only to {window.location.hostname}. If you switch website addresses, unlock Demo access there too. After unlocking, enable fictional cloud consent below.</p>
     {access.authorized ? <button type="button" disabled={busy} onClick={() => void update('DELETE')}>Lock cloud features</button> : <form onSubmit={event => { event.preventDefault(); if (!busy && access.configured) void update('POST', code); }}>
       <label>Judge demo code <input type="password" autoComplete="off" spellCheck={false} minLength={12} maxLength={128} value={code} disabled={busy || !access.configured} onChange={event => setCode(event.target.value)} /></label>
       <button type="submit" disabled={busy || !access.configured || code.length < 12}>Unlock cloud features</button>

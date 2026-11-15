@@ -117,3 +117,19 @@ test('recording cancellation aborts its acquisition preflight before permission 
   const pending=recorder.start();recorder.cancel();assert.equal(acquisition?.aborted,true);
   granted({getTracks:()=>[{stop(){stopped++;}} as MediaStreamTrack]});await assert.rejects(pending);assert.equal(recorderCreated,0);assert.equal(stopped,1);
 });
+
+
+test('Listening distinguishes locked origin, unavailable provider and failed status verification without opening the microphone', async () => {
+  const cases: [() => Promise<Response>, RegExp][] = [
+    [async () => Response.json({access:{authorized:false}}), /locked or expired on this website/],
+    [async () => new Response(null,{status:401}), /locked or expired/],
+    [async () => Response.json({access:{authorized:true,expiresAt:2000},scribe:{available:false}}), /unlocked, but the transcription service is unavailable/],
+    [async () => {throw Error('private network details');}, /Could not verify Listening availability/],
+    [async () => new Response('invalid'), /Could not verify Listening availability/],
+  ];
+  let microphones=0;
+  for(const [fetcher,message] of cases) await assert.rejects(acquirePublicRecording(new AbortController().signal,{
+    fetcher,now:()=>1000,getStream:async()=>{microphones++;return {getTracks:()=>[]};}
+  }),error=>error instanceof PublicRecordingUnavailableError && message.test(error.message) && !error.message.includes('private network details'));
+  assert.equal(microphones,0);
+});

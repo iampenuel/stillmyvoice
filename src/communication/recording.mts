@@ -64,7 +64,11 @@ export function createRecording(deps: Dependencies, event: (event: 'limit' | 'er
   };
 }
 export class PublicRecordingUnavailableError extends Error {
-  constructor() { super('Listening requires unlocked Demo access and an available transcription service. Check Companion setup.'); }
+  constructor(reason: 'access' | 'service' | 'verification' = 'verification') {
+    super(reason === 'access' ? 'Demo access is locked or expired on this website. Open Demo access in Companion setup and unlock this address before recording.'
+      : reason === 'service' ? 'Demo access is unlocked, but the transcription service is unavailable. Check cloud status in Companion setup.'
+      : 'Could not verify Listening availability. Check your connection and Demo access in Companion setup. The microphone stayed off.');
+  }
 }
 /** Check the actual server session immediately before public microphone acquisition. */
 export async function acquirePublicRecording(signal: AbortSignal, deps: { fetcher: typeof fetch; getStream: () => Promise<Stream>; now?: () => number }): Promise<Stream> {
@@ -74,18 +78,20 @@ export async function acquirePublicRecording(signal: AbortSignal, deps: { fetche
     signal.throwIfAborted();
     const response = await deps.fetcher('/api/status', { method: 'GET', credentials: 'same-origin', cache: 'no-store',
       signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]) });
+    if (response.status === 401 || response.status === 403) throw new PublicRecordingUnavailableError('access');
     if (!response.ok) throw Error();
     const text = await response.text(); signal.throwIfAborted();
     if (text.length > 8192) throw Error();
     const status = JSON.parse(text);
     expiresAt = status?.access?.expiresAt;
-    if (status?.access?.authorized !== true || status?.scribe?.available !== true || !Number.isSafeInteger(expiresAt) || expiresAt <= now()) throw Error();
-  } catch { throw new PublicRecordingUnavailableError(); }
+    if (status?.access?.authorized !== true || !Number.isSafeInteger(expiresAt) || expiresAt <= now()) throw new PublicRecordingUnavailableError('access');
+    if (status?.scribe?.available !== true) throw new PublicRecordingUnavailableError('service');
+  } catch (error) { throw error instanceof PublicRecordingUnavailableError ? error : new PublicRecordingUnavailableError(); }
   signal.throwIfAborted();
   const stream = await deps.getStream();
   if (signal.aborted || expiresAt <= now()) {
     for (const track of stream.getTracks()) track.stop();
-    signal.throwIfAborted(); throw new PublicRecordingUnavailableError();
+    signal.throwIfAborted(); throw new PublicRecordingUnavailableError('access');
   }
   return stream;
 }

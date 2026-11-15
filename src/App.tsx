@@ -306,6 +306,11 @@ export function App() {
           {model.screen.name === 'speech-error' ? <p className="notice" role="status">Speech could not finish. Your message is kept.</p> : null}
           {voiceCandidate && (!voiceCandidate.available || !model.cloud.consent || !model.cloud.elevenlabs) ? <p className="notice" role="status">{!voiceCandidate.available ? voiceCandidate.reason : !model.cloud.consent ? 'Enable fictional cloud demo in Companion setup to preview or use this voice.' : model.cloud.elevenReason}</p> : null}
           {model.screen.name === 'listening' ? <div className="notice" role="status">{!model.cloud.consent ? 'Enable fictional cloud demo in Companion setup. ' : null}{model.listen.phase === 'consent' ? 'Fictional conversation only. Ask the speaker to agree. Audio is sent to ElevenLabs for transcription; nothing changes your message.' : model.listen.phase === 'ready' ? 'Microphone permission may need companion help. Record up to 20 seconds.' : model.listen.phase === 'requesting' ? 'Waiting for microphone permission…' : model.listen.phase === 'recording' ? 'Recording · maximum 20 seconds. Stop when finished.' : model.listen.phase === 'processing' ? 'Recording stopped. Preparing transcript…' : model.listen.phase === 'transcript' ? <><p>Partner’s words · Check before accepting</p><p className="exact">{model.listen.transcript}</p></> : model.listen.error}</div> : null}
+          {PUBLIC_DEMO && model.screen.name === 'listening' && model.listen.phase === 'error' ? <button type="button" className="compact-control" onClick={() => {
+            openSetup();
+            const access = setup.current?.querySelector<HTMLElement>('#demo-access');
+            access?.focus(); access?.scrollIntoView({ block: 'start' });
+          }}>Open Demo access</button> : null}
           {alphabet ? <div className="alphabet-surface" aria-label="Visible alphabetical keyboard">
             {alphabetRows.map(row => {
               const rowStage = model.screen.value === 'rows', activeRow = model.screen.value === row;
