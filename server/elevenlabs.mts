@@ -1,3 +1,4 @@
+import { providerModeConfigured, consumeProviderPermit, publicDemoMode, type PublicProviderPermit } from './public-demo-permit.mts';
 /** Server-only ElevenLabs boundary. Never import this module into the UI. */
 import type { Authorization } from '../src/communication/model.mts';
 import { approvedVoices, PREMIUM_MODEL, PREVIEW_TEXT, type PremiumVoice } from '../src/communication/cloud-contract.mts';
@@ -50,10 +51,21 @@ export async function boundedBody(response: Response, maxBytes: number, signal: 
     return joined;
   } finally { signal.removeEventListener('abort', abort); await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
-export function createElevenLabs(env: Record<string, string | undefined>, fetcher: typeof fetch = fetch) {
+export function validateSpeechAuthorization(value: unknown): Authorization {
+  const auth = object(value);
+  const fields = ['id', 'text', 'revision', 'voice', 'rate', 'provider', 'preview'];
+  if (!auth || Object.keys(auth).length !== fields.length || !fields.every(k => Object.hasOwn(auth, k))
+    || auth.provider !== 'elevenlabs' || typeof auth.id !== 'string' || !/^[A-Za-z0-9:-]{8,160}$/.test(auth.id)
+    || typeof auth.text !== 'string' || !auth.text.trim() || auth.text.length > 4096
+    || !Number.isSafeInteger(auth.revision) || Number(auth.revision) < 0 || ![0.75, 1, 1.2].includes(Number(auth.rate))
+    || typeof auth.rate !== 'number' || typeof auth.preview !== 'boolean'
+    || (auth.preview && auth.text !== PREVIEW_TEXT) || !voiceId(auth.voice)) throw new ProviderError('INVALID_SPEECH_AUTHORIZATION', 422);
+  return auth as unknown as Authorization;
+}
+export function createElevenLabs(env: Record<string, string | undefined>, fetcher: typeof fetch = fetch, publicPermit?: PublicProviderPermit) {
   const key = env.ELEVENLABS_API_KEY;
   const confirmed = env.SMV_ELEVENLABS_CREDITS_CONFIRMED === 'true';
-  const permitted = env.SMV_CLOUD_MODE === 'local-synthetic-demo' && env.NODE_ENV !== 'production';
+  const permitted = providerModeConfigured(env);
   const enabled = Boolean(permitted && confirmed && key && key.length >= 12 && !/\s/.test(key));
   const metadataAllowed = Boolean(key && (enabled || env.SMV_METADATA_ALLOWED === 'true'));
   let voices: PremiumVoice[] = [], modelVerified = false, characters = 0, inFlight = false;
@@ -80,6 +92,7 @@ export function createElevenLabs(env: Record<string, string | undefined>, fetche
       if (!metadataAllowed) throw new ProviderError('ELEVENLABS_DISABLED', 403);
       if (voices.length) return voices;
       if (discovery) return discovery;
+      if (publicDemoMode(env) && !consumeProviderPermit(env, publicPermit, 'metadata', { id: publicPermit?.requestId ?? '', units: publicPermit?.units ?? 0 })) throw new ProviderError('PUBLIC_RESERVATION_REQUIRED', 403);
       discovery = (async () => {
         const bounded = AbortSignal.any([signal, AbortSignal.timeout(10_000)]);
         try {
@@ -106,18 +119,12 @@ export function createElevenLabs(env: Record<string, string | undefined>, fetche
     },
     async synthesize(value: unknown, signal: AbortSignal): Promise<Uint8Array> {
       if (!enabled) throw new ProviderError('ELEVENLABS_DISABLED', 403);
-      const auth = object(value);
-      const fields = ['id', 'text', 'revision', 'voice', 'rate', 'provider', 'preview'];
-      if (!auth || Object.keys(auth).length !== fields.length || !fields.every(k => Object.hasOwn(auth, k))
-        || auth.provider !== 'elevenlabs' || typeof auth.id !== 'string' || !/^[A-Za-z0-9:-]{8,160}$/.test(auth.id)
-        || typeof auth.text !== 'string' || !auth.text.trim() || auth.text.length > 4096
-        || !Number.isSafeInteger(auth.revision) || Number(auth.revision) < 0 || ![0.75, 1, 1.2].includes(Number(auth.rate))
-        || typeof auth.rate !== 'number' || typeof auth.preview !== 'boolean'
-        || (auth.preview && auth.text !== PREVIEW_TEXT) || !voiceId(auth.voice)) throw new ProviderError('INVALID_SPEECH_AUTHORIZATION', 422);
+      const auth = validateSpeechAuthorization(value);
       if (!modelVerified || !voices.some(v => v.id === auth.voice && v.available)) throw new ProviderError('VOICE_NOT_VERIFIED', 409);
       if (consumed.has(auth.id)) throw new ProviderError('AUTHORIZATION_ALREADY_USED', 409);
       if (inFlight) throw new ProviderError('SPEECH_BUSY', 409);
       if (characters + auth.text.length > 10_000 || consumed.size >= 100) throw new ProviderError('SESSION_LIMIT_REACHED', 429);
+      if (!consumeProviderPermit(env, publicPermit, 'speech', { id: auth.id, units: auth.text.length })) throw new ProviderError('PUBLIC_RESERVATION_REQUIRED', 403);
       const approved = auth as unknown as Authorization;
       consumed.add(approved.id); characters += approved.text.length; inFlight = true;
       const bounded = AbortSignal.any([signal, AbortSignal.timeout(12_000)]);
@@ -127,7 +134,7 @@ export function createElevenLabs(env: Record<string, string | undefined>, fetche
             model_id: modelForVoice(approved.voice), apply_text_normalization: 'off', voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0, use_speaker_boost: false, speed: approved.rate } }),
         });
         if (!response.headers.get('content-type')?.startsWith('audio/')) { await response.body?.cancel(); throw new ProviderError('INVALID_AUDIO_RESPONSE', 502); }
-        const audio = await boundedBody(response, 8 * 1024 * 1024, bounded);
+        const audio = await boundedBody(response, publicDemoMode(env) ? 3_000_000 : 8 * 1024 * 1024, bounded);
         if (!audio.length) throw new ProviderError('EMPTY_AUDIO_RESPONSE', 502);
         return audio;
       } catch (error) {

@@ -1,4 +1,4 @@
-import { requireCloudServices } from '../release-capabilities.mts';
+import { requireCloudServices, PUBLIC_DEMO } from '../release-capabilities.mts';
 import { useEffect } from 'react';
 import { cloudFailure, requestStillCurrent } from './cloud-error.mts';
 import { cloudServicesEnabled, finishAssistance, finishExpansion, type Model } from './model.mts';
@@ -36,21 +36,21 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
         const status = await json('/api/status', signal);
         const cloud = current.current.cloud;
         let voices = cloud.voices;
-        if (status.elevenlabs?.metadataAvailable === true) {
-          const result = await json('/api/voices', signal, {});
+        if (status.elevenlabs?.metadataAvailable === true && (!PUBLIC_DEMO || cloud.consent)) {
+          const result = await json('/api/voices', signal, PUBLIC_DEMO ? { cloudConsent: true } : {});
           if (Array.isArray(result.voices) && result.voices.length === 6 && result.voices.every((v: PremiumVoice, i: number) =>
             v.id === approvedVoices[i].id && typeof v.available === 'boolean' && typeof v.reason === 'string')) voices = result.voices;
           else throw Error('Voice collection could not be verified.');
         }
         pending = { elevenlabs: status.elevenlabs?.available === true, gemini: status.gemini?.available === true,
-          elevenReason: status.elevenlabs?.available === true ? 'Ready' : 'Account protections need confirmation',
-          geminiReason: status.gemini?.available === true ? 'Ready' : 'Free-tier account checks pending', voices };
+          elevenReason: status.elevenlabs?.available === true ? 'Ready' : PUBLIC_DEMO ? 'Unlock Demo access in Companion setup; provider safeguards must be ready.' : 'Account protections need confirmation',
+          geminiReason: status.gemini?.available === true ? 'Ready' : PUBLIC_DEMO ? 'Unlock Demo access in Companion setup; provider safeguards must be ready.' : 'Free-tier account checks pending', voices };
       } catch { if (!controller.signal.aborted) pending = { elevenlabs: false, gemini: false, elevenReason: 'Voice service unavailable', geminiReason: 'Suggestion service unavailable' }; }
       apply();
     })();
     const timer = setInterval(apply, 100);
     return () => { controller.abort(); clearInterval(timer); };
-  }, [model.cloud.refresh]);
+  }, [model.cloud.refresh, PUBLIC_DEMO && model.cloud.consent]);
 
   const request = model.assistance.request;
   useEffect(() => {

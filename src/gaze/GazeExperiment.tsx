@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PUBLIC_RELEASE } from '../release-capabilities.mts';
 import { createCameraSession } from './camera-session.mts';
 import { RealEyeTrackerAdapter, type TrackerCalibration } from './tracker-adapter';
 import { GazeStability, GazeTrialRun, type GazePoint, type GazeSnapshot, type GazeTrialResult, type GazeViewport, type GazeLayout, type GazeTrialInterruption, type GazeTrialInterruptionReason } from './gaze-logic.mts';
@@ -234,7 +235,7 @@ export function GazeExperiment() {
   async function start(){
     if(session.current&&!['off','unavailable'].includes(session.current.state().phase))return;
     runtime.current.diagnostics=new GazeDiagnostics();runtime.current.lastCaptureAt=0;update({...initial(),results:view.results,resultDiagnostics:view.resultDiagnostics,resultFit:view.resultFit,interruption:view.interruption,measurementLayout:view.measurementLayout,geometryEvidence:view.geometryEvidence,resultGeometry:view.resultGeometry,geometryReady:runtime.current.geometryReady,denominator:view.denominator});setPreview(false);
-    if(!navigator.mediaDevices?.getUserMedia){fail('This browser does not provide camera access. Use Chrome on localhost.');return;}
+    if(!navigator.mediaDevices?.getUserMedia){fail('This browser does not provide camera access. Use Chrome over HTTPS or localhost.');return;}
     await session.current?.start();
     if(session.current?.state().phase==='ready'){const generation=runtime.current.generation;schedule(generation);}
   }
@@ -336,7 +337,7 @@ export function GazeExperiment() {
       <button disabled={active} onClick={()=>update({geometryEvidence:runtime.current.geometry.snapshot()})}>Inspect geometry events</button>
       <pre>{JSON.stringify(view.geometryEvidence,null,2)}</pre><p>Event categories are evidence-based; the browser does not expose which toolbar changed or whether resizing was intentional.</p></details>
     <footer><p>Video frames and calibration stay in memory and are discarded when stopped. Measurement rows remain in this tab only.</p>
-      <a href="/gaze/licenses/SMV-AGPL-3.0.txt">AGPL license</a><a href="/">Switch-only SMV</a></footer>
+      <a href="/gaze/licenses/SMV-AGPL-3.0.txt">AGPL license</a>{PUBLIC_RELEASE ? <a href="/release-info.html">Source and license</a> : null}<a href="/">Switch-only SMV</a></footer>
     {pointer?.smoothedPoint&&view.calibrated?<div className="gaze-pointer" aria-hidden="true" style={{left:pointer.smoothedPoint.x,top:pointer.smoothedPoint.y}}><span/></div>:null}
     {view.calibrationPoint?<dialog ref={calibrationDialog} className="gaze-calibration-layer" data-target-bottom={view.calibrationPoint.y>=innerHeight/2} aria-label="Timed calibration" onCancel={event=>{event.preventDefault();stop();}}>
       <p className="gaze-calibration-instruction" role="status">{view.face?'Look at the point':'Face not detected — this point will wait'} · {view.calibrationIndex}/17<br/><span>Keep your head steady. Samples advance automatically when a face is detected.</span></p>

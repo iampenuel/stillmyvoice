@@ -1,3 +1,13 @@
+# Current checkpoint — protected public demonstration release
+
+November 15, 2026. The owner authorized publication and deployment to the existing stillmyvoice Vercel project. The public-demo profile includes optional local-inference gaze, packaged pinned assets and license notices, plus server-side Gemini, ElevenLabs and consent-based Listening behind a judge code, signed short-lived cookies, same-origin checks and durable Redis budgets. Actual provider operations additionally require one-use permits bound to the authorized request, cost and deadline. The full local profile and physical-input/speech safeguards remain intact. Production gaze selection remains disabled; experimental physical validation is pending.
+
+Verification before publication: 382 tests passed with zero skips, including actual Redis atomic concurrency and mocked provider integration; typecheck, full local build and public-demo build passed. Dependency audit found zero vulnerabilities. Credential scanning is performed against source and build outputs without printing values. Actual deployed routing and live authenticated provider acceptance remain pending and must not be inferred from mocks.
+
+The existing provider keys were transferred privately into Production Secrets, with separate new demo/session secrets and a connected Upstash Free database with eviction disabled. No local-only development gates were copied. DNS is saved and Vercel-verified; the owner confirmed apex HTTPS and the www redirect on cellular. The current network filters the custom hostname, while the vercel.app fallback works. No billing upgrade, firmware change or Devpost edit/submission occurred. Devpost was inspected read-only: Draft, 3/5 complete; required Additional info and final submission remain unfinished. Keep the owner's 8:00 AM Eastern cutoff.
+
+The following entries are historical and do not override this checkpoint.
+
 # Current checkpoint — isolated pointer sandbox and frontend release preparation
 
 November 15, 2026. The unresolved `./GazeSandbox` import was transient during implementation: the parent referenced the new component before its file was complete. The named component/export, conservative pointer filter, four fictional actions and physical confirmation controller are now present. Chrome renders the experiment and main interface. Genuine serial input passes through the unchanged adapter/reducer; gaze never generates clicks, DOWN/UP, message edits or speech approval. Production gaze integration remains disabled. [Sandbox evidence and short owner check](GAZE_EXPERIMENT.md#pointer-and-physical-switch-sandbox-follow-up).

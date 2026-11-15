@@ -18,12 +18,19 @@ function frontend() {
  model.cloud.voices=model.cloud.voices.map(voice=>({...voice,available:true}));
  return model;
 }
-test('only the explicit frontend-demo mode disables cloud services; local defaults remain unchanged',()=>{
- assert.deepEqual(releaseCapabilities('frontend-demo'),{frontendDemo:true,cloudServices:false});
- for(const mode of [undefined,'','development','production']) assert.equal(releaseCapabilities(mode).cloudServices,true);
+test('public demo profiles disable cloud independently of optional gaze; local defaults remain unchanged',()=>{
+ assert.deepEqual(releaseCapabilities('frontend-demo'),{frontendDemo:true,cloudServices:false,gazeExperiment:false});
+ assert.deepEqual(releaseCapabilities('gaze-demo'),{frontendDemo:true,cloudServices:false,gazeExperiment:true});
+ assert.equal(Object.isFrozen(releaseCapabilities('gaze-demo')),true);
+ for(const mode of [undefined,'','development','production','public-demo']) assert.deepEqual(releaseCapabilities(mode),{frontendDemo:false,cloudServices:true,gazeExperiment:true});
  assert.equal(initialCloud().backendEnabled,true);assert.equal(initialCloud().consent,false);
  assert.equal(initialCloud(false).elevenReason,FRONTEND_CLOUD_UNAVAILABLE);
  assert.throws(()=>requireCloudServices(false),/Unavailable in this frontend demo/);
+});
+for(const mode of ['frontend-demo','gaze-demo']) test(mode+' runtime rejects cloud even when a caller retains an enabled capability',()=>{
+ const source=readFileSync(new URL('../src/release-capabilities.mts',import.meta.url),'utf8')
+   .replaceAll('import.meta.env?.VITE_SMV_RELEASE_MODE',JSON.stringify(mode)).replace(/^export /gm,'');
+ assert.throws(()=>runInNewContext(stripTypeScriptTypes(source,{mode:'strip'})+'\nrequireCloudServices(true);'),/Unavailable in this frontend demo/);
 });
 test('frontend capability blocks Listening, expansion and suggestions despite retained ready/consent state',()=>{
  let model=frontend();
@@ -59,7 +66,7 @@ function runtime(name:'CloudRuntime'|'ListeningRuntime',model:Model) {
  const context={
   useEffect:(effect:()=>void|(()=>void))=>{const cleanup=effect();if(cleanup)cleanups.push(cleanup);},
   document:{hasFocus:()=>true,visibilityState:'visible'},AbortController,AbortSignal,
-  cloudServicesEnabled:()=>false,requireCloudServices:()=>requireCloudServices(false),initialCloud,FRONTEND_CLOUD_UNAVAILABLE,
+  PUBLIC_DEMO:false,cloudServicesEnabled:()=>false,requireCloudServices:()=>requireCloudServices(false),initialCloud,FRONTEND_CLOUD_UNAVAILABLE,
   listeningEvent,browserRecording:()=>{recorders++;throw Error('Must not construct recorder');},
   setInterval:()=>0,clearInterval:()=>{},fetch:async()=>{fetches++;throw Error('Must not fetch');},
   props:{model,current,commit:(next:Model)=>{current.current=next;},canUpdate:()=>true},

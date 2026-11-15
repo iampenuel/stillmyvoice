@@ -1,3 +1,4 @@
+import { providerModeConfigured, consumeProviderPermit, type PublicProviderPermit } from './public-demo-permit.mts';
 /** Direct Gemini reasoning boundary, intentionally unable to access input/speech state. */
 import { ProviderError, type ErrorMetadata } from './elevenlabs.mts';
 import { expansionInstruction, expansionSchema, knownAmbiguity, validateExpansion, validateExpansionRequest, type ExpansionResult } from './expansion.mts';
@@ -79,10 +80,9 @@ export function normalizedGeminiError(error: unknown, aborted = false): Provider
   }
   return new ProviderError(status === 429 ? 'GEMINI_QUOTA' : aborted ? 'GEMINI_CANCELLED_OR_TIMEOUT' : 'GEMINI_UNAVAILABLE', status === 429 ? 429 : 503, metadata);
 }
-export function createGemini(env: Record<string, string | undefined>, generate: Generate) {
+export function createGemini(env: Record<string, string | undefined>, generate: Generate, publicPermit?: PublicProviderPermit) {
   const key = env.GEMINI_API_KEY;
-  const mode = env.SMV_CLOUD_MODE === 'local-synthetic-demo' && env.NODE_ENV !== 'production'
-    && env.GOOGLE_GENAI_USE_VERTEXAI !== 'true';
+  const mode = providerModeConfigured(env) && env.GOOGLE_GENAI_USE_VERTEXAI !== 'true';
   const free = env.SMV_GEMINI_FREE_TIER_CONFIRMED === 'true';
   const approvedModel = !env.SMV_GEMINI_MODEL || env.SMV_GEMINI_MODEL === GEMINI_MODEL;
   const configuredLimit = env.SMV_GEMINI_REQUEST_LIMIT ?? String(DEFAULT_GEMINI_REQUEST_LIMIT);
@@ -114,6 +114,7 @@ export function createGemini(env: Record<string, string | undefined>, generate: 
     if (busy) { counters.busy++; throw remember(new ProviderError('ASSISTANCE_BUSY', 409, { source: 'app' })); }
     const remaining = 5000 - (Date.now() - lastStarted);
     if (remaining > 0) { counters.cooldown++; throw remember(new ProviderError('ASSISTANCE_COOLDOWN', 429, { source: 'app', retryAfterSeconds: Math.ceil(remaining / 1000) })); }
+    if (!consumeProviderPermit(env, publicPermit, 'gemini', { id, units: 1 })) throw remember(new ProviderError('PUBLIC_RESERVATION_REQUIRED', 403));
     consumed.add(id); calls++; busy = true; lastStarted = Date.now();
     const began = performance.now();
     const evidence: CompletedEvidence = { route, model: GEMINI_MODEL, requestNumber: calls, outcome: 'failure', totalLatencyMs: 0,

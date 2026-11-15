@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, resolveConfig } from 'vite';
-import { frontendDemoHeaders, releaseProvenance, releaseInfoHtml, releaseTreeDirty } from '../scripts/frontend-demo-profile.mts';
+import { frontendDemoHeaders, gazeDemoHeaders, publicDemoHeaders, releaseProvenance, releaseInfoHtml, releaseTreeDirty } from '../scripts/frontend-demo-profile.mts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sha = 'a'.repeat(40);
@@ -34,13 +38,21 @@ test('one public release SHA supports metadata-free builders without bypassing m
   assert.throws(() => releaseProvenance({ releaseRevision: sha, vercelRevision: 'b'.repeat(40), dirty: null, vercel: true }), /revisions differ/);
   assert.throws(() => releaseProvenance({ releaseRevision: sha, dirty: true, vercel: true }), /working tree is dirty/);
 });
-test('Vercel configuration is static-only, disables automatic deployment, and matches preview security headers', async () => {
+test('Vercel public demo permits only same-origin APIs and gaze with explicit camera/microphone permissions', async () => {
   const config = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
   assert.equal(config.framework, 'vite'); assert.equal(config.outputDirectory, 'dist');
-  assert.equal(config.buildCommand, 'npm run build:demo'); assert.equal(config.installCommand, 'npm ci');
+  assert.equal(config.buildCommand, 'npm run build:public-demo'); assert.equal(config.installCommand, 'npm ci');
   assert.equal(config.git.deploymentEnabled, false);
-  assert.equal(config.rewrites, undefined); assert.equal(config.functions, undefined);
-  assert.deepEqual(Object.fromEntries(config.headers[0].headers.map((entry: { key: string; value: string }) => [entry.key, entry.value])), frontendDemoHeaders);
+  assert.deepEqual(config.rewrites, [{ source: '/gaze-experiment', destination: '/gaze-experiment/index.html' }]); assert.deepEqual(config.functions, { 'api/[...route].ts': { maxDuration: 30 } });
+  assert.deepEqual(Object.fromEntries(config.headers[0].headers.map((entry: { key: string; value: string }) => [entry.key, entry.value])), publicDemoHeaders);
+  assert.match(gazeDemoHeaders['Content-Security-Policy'], /(?:^|; )connect-src 'self';/);
+  assert.match(gazeDemoHeaders['Content-Security-Policy'], /(?:^|; )worker-src 'self';/);
+  assert.match(gazeDemoHeaders['Content-Security-Policy'], /(?:^|; )script-src 'self' 'wasm-unsafe-eval';/);
+  assert.doesNotMatch(gazeDemoHeaders['Content-Security-Policy'], /'unsafe-eval'|https:|\*|blob:/);
+  assert.equal(gazeDemoHeaders['Permissions-Policy'], 'camera=(self), microphone=(), geolocation=(), serial=(self)');
+  assert.equal(publicDemoHeaders['Permissions-Policy'], 'camera=(self), microphone=(self), geolocation=(), serial=(self)');
+  assert.match(publicDemoHeaders['Content-Security-Policy'], /media-src 'self' blob:/);
+  assert.doesNotMatch(publicDemoHeaders['Content-Security-Policy'], /'unsafe-eval'|https:|\*/);
   assert.match(frontendDemoHeaders['Content-Security-Policy'], /connect-src 'none'/);
   assert.match(frontendDemoHeaders['Permissions-Policy'], /camera=\(\), microphone=\(\)/);
 });
@@ -93,4 +105,60 @@ test('builder JSON reformatting is allowed only when every committed setting is 
   assert.equal(releaseTreeDirty(' M vercel.json\n M src/App.tsx',original,reformatted),true);
   assert.equal(releaseTreeDirty(' M vercel.json\n?? unexpected.js',original,reformatted),true);
   assert.equal(releaseTreeDirty('M  vercel.json',original,reformatted),true);
+});
+
+for (const mode of ['gaze-demo', 'public-demo']) test(mode + ' packages its isolated route and pinned local inference assets without arbitrary public files or an API proxy', async () => {
+  const previous = process.env.VITE_SMV_RELEASE_MODE;
+  process.env.VITE_SMV_RELEASE_MODE = mode;
+  let fixture: string | undefined;
+  try {
+    // Exercise the same reviewed asset preparation used by the production build.
+    // Its only network input is the pinned public model, verified by SHA-256.
+    await promisify(execFile)(process.execPath, ['scripts/prepare-gaze-assets.mts'], { cwd: root, timeout: 60_000 });
+    fixture = await mkdtemp(path.join(root, 'public', 'smv-excluded-fixture-'));
+    await writeFile(path.join(fixture, 'owner-report.txt'), 'Synthetic exclusion fixture; no private data.');
+    const resolved = await resolveConfig({ root, mode, logLevel: 'silent' }, 'build');
+    assert.equal(resolved.publicDir, ''); assert.equal(resolved.appType, 'mpa');
+    assert.deepEqual(resolved.server.proxy, {}); assert.deepEqual(resolved.preview.proxy, {});
+    assert.deepEqual(resolved.preview.headers, mode === 'public-demo' ? publicDemoHeaders : gazeDemoHeaders);
+    const result = await build({ root, mode, logLevel: 'silent', build: { write: false } });
+    const files = (Array.isArray(result) ? result : [result]).flatMap(bundle => 'output' in bundle ? bundle.output : []);
+    const asset = (name: string) => {
+      const file = files.find(file => file.fileName === name);
+      assert.ok(file && file.type === 'asset', 'Missing emitted asset: ' + name);
+      return file.source;
+    };
+    const bytes = (name: string) => { const value = asset(name); return typeof value === 'string' ? Buffer.from(value) : value; };
+    assert.equal(String(asset('gaze-experiment/index.html')), String(asset('index.html')));
+    for (const match of String(asset('gaze-experiment/index.html')).matchAll(/(?:src|href)="(\/assets\/[^" ]+)"/g)) {
+      assert.ok(files.some(file => file.fileName === match[1].slice(1)), 'Broken route asset: ' + match[1]);
+    }
+    const modules = files.flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
+    assert.ok(modules.some(id => id.endsWith('/src/gaze/GazeExperiment.tsx')));
+    assert.ok(modules.some(id => id.endsWith('/src/gaze/GazeSandbox.tsx')));
+    assert.ok(!modules.some(id => /\/server\/|\/node_modules\/@google\//.test(id)));
+    assert.ok(!files.some(file => /(?:^|\/)(?:api|server|local-reports|\.local-cache|\.env)(?:\/|\.|$)|smv-excluded-fixture-/.test(file.fileName)));
+    const manifest = JSON.parse(String(asset('gaze/provenance.json')));
+    assert.equal(manifest.realeye, '1.1.0'); assert.equal(manifest.mediapipe, '0.10.18');
+    const expectedAssets = ['face_landmarker.task', 'tracker.worker.js', 'wasm/vision_wasm_internal.js', 'wasm/vision_wasm_internal.wasm', 'wasm/vision_wasm_nosimd_internal.js', 'wasm/vision_wasm_nosimd_internal.wasm'];
+    assert.deepEqual(manifest.assets.map((entry: {file: string}) => entry.file).sort(), [...expectedAssets].sort());
+    for (const entry of manifest.assets) assert.equal(createHash('sha256').update(bytes('gaze/' + entry.file)).digest('hex'), entry.sha256);
+    assert.equal(createHash('sha256').update(bytes('gaze/face_landmarker.task')).digest('hex'), '64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff');
+    for (const name of ['vision_wasm_internal', 'vision_wasm_nosimd_internal']) {
+      assert.deepEqual([...bytes('gaze/wasm/' + name + '.wasm').slice(0, 4)], [0, 97, 115, 109]);
+    }
+    assert.ok(bytes('gaze/tracker.worker.js').length > 100_000);
+    for (const name of ['RealEye-LICENSE.txt', 'RealEye-AGPL.md', 'RealEye-THIRD-PARTY.md', 'RealEye-MODELS.md', 'RealEye-COMMERCIAL.md', 'MediaPipe-Apache-2.0.txt', 'ml-matrix-MIT.txt', 'ml-array-min-LICENSE.txt', 'ml-array-max-LICENSE.txt', 'ml-array-rescale-LICENSE.txt', 'is-any-array-LICENSE.txt']) {
+      assert.equal(Buffer.from(bytes('gaze/licenses/dependencies/' + name)).toString(), await readFile(path.join(root, 'docs/licenses', name), 'utf8'));
+    }
+    assert.match(String(asset('gaze/licenses/SMV-AGPL-3.0.txt')), /GNU AFFERO GENERAL PUBLIC LICENSE/);
+    const info = JSON.parse(String(asset('release-info.json')));
+    assert.equal(info.mode, mode); assert.equal(info.publicationVerified, false);
+    assert.match(String(asset('release-info.html')), /Physical validation is pending/);
+    if (mode === 'public-demo') assert.match(String(asset('release-info.html')), /server-authorized demo session and available shared quotas/);
+    else assert.match(String(asset('release-info.html')), /Listening, Gemini and ElevenLabs are unavailable/);
+  } finally {
+    if (fixture) await rm(fixture, { recursive: true, force: true });
+    if (previous === undefined) delete process.env.VITE_SMV_RELEASE_MODE; else process.env.VITE_SMV_RELEASE_MODE = previous;
+  }
 });

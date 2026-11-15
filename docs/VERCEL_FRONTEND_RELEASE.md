@@ -1,81 +1,101 @@
-# Vercel frontend demo — preparation only
+# Vercel public demonstration release
 
-The current repository has an explicit `frontend-demo` build profile. No Vercel project, deployment, Git push, domain assignment or DNS change was made. The local development application remains the full SMV implementation. Experimental gaze is excluded from the frontend demo artifact; that does not remove experimental source from the current Git branch or authorize publishing that branch.
+November 15, 2026. The owner authorized an access-controlled public backend, optional gaze, normal Git publication and deployment to the existing project. This document describes the release configuration and verification requirements. The new full profile's deployment and actual Gemini, ElevenLabs and Scribe acceptance remain pending until the final release report records their observed results. A visible control or a mocked test is not provider evidence.
 
-## What the hosted profile supports
+## Target and rollback
 
-The frontend demo retains composition, context/phrase selection, spelling, correction, silent Review, physical-switch input and separately authorized browser speech. Browser/system voice availability is device-dependent; some voices may use a network. Full offline operation and physical acceptance on a future public domain are not claimed.
+- Repository: `iampenuel/stillmyvoice`; publish reviewed commits to `main` through normal history.
+- Previous verified public release: `21cdc80d3b2b713daa896a6c277337f843c9db15`. Preserve its Vercel deployment for rollback.
+- Existing project: `stillmyvoice`, ID `prj_B7BoP7E23UlADoi8gc7XNKpeH8gy`.
+- Team: `penuels-projects-aa802b06`, ID `team_7zBDrVIlwYth2sXkAbBPcbYw`.
+- Production origins: https://stillmyvoice.club and https://stillmyvoice.vercel.app . Do not create another project.
+- Repository root `.`, framework Vite, Node 24, install `npm ci`, build `npm run build:public-demo`, output `dist`.
+- `git.deploymentEnabled: false` prevents automatic Git cutovers. Deploy the exact reviewed SHA manually after checks.
 
-Listening, Gemini, ElevenLabs and gaze are unavailable in this profile. Client capability guards prevent microphone capture and cloud requests, including retained requests or provider choices. Cloud consent and Refresh controls are disabled with an explanation. No API keys, backend functions, local API proxy or paid services belong in this deployment. The normal local API remains a separate process; it has not been exposed or adapted for public hosting.
+The owner reported that the DNS cutover is complete and `stillmyvoice.club` loads over cellular HTTPS. This supersedes the earlier misconfigured-DNS observation. Recheck the final domain against the new deployment; no further DNS edits, nameserver changes or unrelated records are part of this application release.
 
-Web Serial requires a compatible browser and a secure context. A future HTTPS origin needs its own port permission and independent verification of the dedicated Pico CDC2 interface; localhost permission does not establish permission or successful hardware operation on that domain. Firmware, CDC protocol, the accepted input reducer and exact-message speech approval remain unchanged.
+## Public access and unchanged AAC authority
 
-## Approved manual release metadata
+Basic AAC remains available without a code: composition, contexts/phrases, spelling, correction, silent Review, physical-switch input and separately approved browser speech. Browser/system voice availability varies by device; some voices may use a network. No offline, clinical or communication-speed claim is made.
 
-When Vercel does not provide Git metadata to the build, set the single plain production variable `SMV_RELEASE_COMMIT_SHA` to the exact approved full Git SHA used in the deployment request. This is public source metadata, never an API credential. Update it for each manual release; do not enable broad system-variable exposure for this purpose. If Git or standard Vercel metadata is also available, all supplied revisions must match. Missing/malformed/mismatched revisions and known dirty trees still fail the build. The source link never claims the build independently verified publication.
+**Demo access** in Companion setup sends the judge code only to the same-origin server. It is not embedded, stored in browser storage or placed in a URL. The server verifies it after durable brute-force limiting and issues a two-hour `__Host-smv-demo` cookie with `Secure`, `HttpOnly`, `SameSite=Strict` and `Path=/`. The signed session binds to an HMAC of Vercel's trusted client-address header. Logout revokes the session in Redis before clearing the cookie. It is not just a client-side toggle.
 
-## Build and preview mapping
+Cloud access remains locked until the server validates a session. Cloud consent, fictional-content constraints, recording consent, original-text preservation, deliberate candidate acceptance, silent full Review and a fresh exact speech authorization still apply. An access code does not authorize recording, AI calls or speech by itself. Provider failures leave browser speech available through the existing review/approval flow; there is no automatic provider retry or automatic speech fallback.
 
-Use the installed Node 24.22.1 / npm 11.19.1 without changing global defaults:
+The ordinary local application and loopback API remain separate and functional under their existing local gates. The public mode does not load local `.env` files, copy account-verification records or expose the loopback process. Pico firmware, the CDC protocol and the physical-input reducer are unchanged.
+
+## Runtime configuration
+
+Configure these only as server-side production variables in the existing Vercel project; never use `VITE_` names or put values in Git, reports or browser responses:
+
+| Variable | Requirement |
+|---|---|
+| `SMV_CLOUD_MODE` | `public-demo` |
+| `VERCEL` | `1`; verify runtime availability or set this single nonsensitive flag explicitly |
+| `SMV_DEMO_ACCESS_CODE` | Private printable code, 12–128 characters |
+| `SMV_DEMO_SESSION_SECRET` | Independently generated random secret, at least 32 characters |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | HTTPS Upstash REST endpoint and private token; `KV_REST_API_URL` / `KV_REST_API_TOKEN` aliases are accepted |
+| `GEMINI_API_KEY` | Restricted server-side Gemini credential |
+| `ELEVENLABS_API_KEY` | Restricted server-side ElevenLabs credential |
+| `SMV_GEMINI_FREE_TIER_CONFIRMED` | `true` only after owner verification of the actual provider account |
+| `SMV_ELEVENLABS_CREDITS_CONFIRMED` | `true` only after owner verification of credits and disabled overages |
+| `SMV_RELEASE_COMMIT_SHA` | Exact public full Git SHA used for the manual deployment; this value is not a secret |
+
+The owner reported that the free Redis resource, private variables and provider free-tier/credit protections are configured. Production availability must still be checked without exposing their values. Missing/invalid configuration, unavailable shared storage or unconfirmed provider gates fail closed. No paid plan, top-up or billing activation is authorized. Do not enable broad system-variable exposure to obtain one required flag.
+
+## Shared request and usage enforcement
+
+`server/public-demo-security.mts` uses one bounded Upstash REST `EVAL` call per operation. Lua reservations atomically enforce global, client and session limits, replay consumption, provider/session locks and the Gemini five-second cooldown. `smv:{public-demo:hp26}:usage-v1` is fixed across deployments; global/client usage and replay records do not expire or reset on a new process, login or Git revision. Provider failures and uncertain cancellations consume their reserved allowance. These are application demonstration budgets, never a claim about Google's or ElevenLabs' remaining quota.
+
+| Provider | Global ceiling | Per-client ceiling | Per-session ceiling |
+|---|---|---|---|
+| Gemini | 300 requests | 40 requests | 20 requests |
+| ElevenLabs speech | 100 requests / 10,000 characters | 40 requests / 4,000 characters | 20 requests / 2,000 characters |
+| Scribe | 6 clips / 120 seconds reserved | 4 clips / 80 seconds | 3 clips / 60 seconds |
+| Voice metadata | 100 discovery requests | 20 requests | 10 requests |
+
+Each request consumes the complete validated text length or, for Scribe, a conservative 20 seconds regardless of a shorter recording. The public audio path converts in memory to canonical mono 16 kHz PCM16 WAV without playback. The server independently validates its exact headers and byte count, proving a maximum 20 seconds before quota reservation or provider submission. Client-declared duration is not the billing bound. Public JSON/audio bodies, provider responses and Gemini output tokens remain bounded.
+
+Login attempts are limited to 5 per client and 100 globally per 15 minutes. Provider attempts have global/client/session minute limits of 60/20/12; authenticated status reads are also limited. The server hashes request IDs for durable replay rejection and HMACs addresses; raw IPs, authored text, transcripts and audio are not Redis records. Secret rotation invalidates sessions and changes client pseudonyms; it must not be used to reset allowances. Global usage and request replay records remain stable.
+
+One provider request and one request per session may be in flight. The request abort deadline is 15 seconds and durable leases expire after 30 seconds. Failed/uncertain provider outcomes keep the lease until expiry. Unlock compares the reservation token so an older completion cannot release a newer lease. Every provider path requires a successful durable reservation; no process-local fallback authorizes spending when Redis fails.
+
+## API and browser boundaries
+
+The Vercel entry `api/[...route].ts` invokes the server-only public handler. It accepts only the two production HTTPS origins, requires matching Origin on mutations, returns no permissive CORS header and rejects query parameters on API requests. Routes are:
+
+- `GET/POST/DELETE /api/demo-access`: inspect, authorize or revoke Demo access.
+- `GET /api/status`: locked status or authenticated shared budget/provider configuration.
+- `POST /api/voices`, `/api/speech`, `/api/transcription`, `/api/expansion`, `/api/suggestions`: authenticated, bounded and durably reserved provider operations.
+
+Public provider mode is explicit and distinct from the unchanged local mode. Existing schemas, approved voice identities/models, intent preservation, exact speech text, cancellation and provider error normalization remain. Production status uses shared counts and states that provider quota remaining is unknown. No private provider response or authored content is logged. Unsupported API paths return 404; a blanket SPA rewrite does not conceal failures.
+
+The full public CSP permits same-origin script/style/model/API traffic, same-origin workers, WebAssembly compilation, and `media-src 'self' blob:` for authorized audio playback. It does not permit arbitrary external application connections or JavaScript `unsafe-eval`. Permissions Policy is `camera=(self), microphone=(self), geolocation=(), serial=(self)`. Camera and microphone still require explicit application actions and browser permission. Policy permission is not automatic activation. Referrers, content sniffing and framing remain restricted.
+
+## Optional gaze, assets and source
+
+The optional experiment opens from Companion setup at `/gaze-experiment`. Camera defaults to OFF. Pinned RealEye 1.1.0 and MediaPipe 0.10.18 perform inference on the device. Gaze preview cannot select or speak in the production workspace. Sandbox selections require the existing physical-switch adapter/reducer, target capture on DOWN and one valid matching UP; no synthetic input or automatic gaze clicks are introduced. Physical pointer/target/switch acceptance remains pending, independently of model loading or earlier owner-observed Left/None/Right behavior.
+
+`npm run prepare:gaze` builds the classic worker and copies both WASM variants/loaders and license notices. Its versioned Face Landmarker model is verified against SHA-256 `64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff`. A clean build downloads this public asset when absent; runtime CDN requests are unnecessary. Public-directory copying is disabled and required gaze files are explicitly emitted and integrity-checked. Private caches, reports, credentials and camera data are not artifacts.
+
+Public builds emit the exact source revision in `/release-info.html` and `/release-info.json`, root AGPL text, third-party notices, React/React DOM/Scheduler MIT texts and the complete gaze dependency notices. Main and experiment links expose these to users. Publish and independently verify the exact corresponding source commit. `publicationVerified: false` means the build does not itself verify GitHub availability. Missing/conflicting revisions or known dirty trees block Vercel builds; semantically identical Vercel JSON reformatting is the sole harmless builder exception.
+
+## Build, verification and rollback profiles
+
+Use the existing Node 24.22.1 / npm 11.19.1 without changing global defaults:
 
 ```sh
-export PATH="/Users/admin/.nvm/versions/node/v24.22.1/bin:$PATH"
-npm run build:demo
-npm run preview:demo
+npm ci
+npm test
+npm run typecheck
+npm run build:public-demo
+npm run preview:public-demo
 ```
 
-- Source workspace: the existing repository and coordinated implementation branch. A specific final commit still needs owner release approval.
-- Profile flag: `VITE_SMV_RELEASE_MODE=frontend-demo`; both commands set it explicitly.
-- Build command: `tsc --noEmit && VITE_SMV_RELEASE_MODE=frontend-demo vite build --mode frontend-demo`.
-- Output directory: `dist`.
-- Local preview: `http://127.0.0.1:4173`, with strict port selection, no API proxy and the same security headers as `vercel.json`.
-- Vercel mapping: repository root `.`, framework `vite`, install `npm ci`, build `npm run build:demo`, output `dist`.
-- `git.deploymentEnabled: false` prevents automatic Git deployments. No project/production-branch setting has been created or changed.
+The static public-profile preview uses port 4175 and matching headers but does **not** emulate Vercel Functions; live API verification requires the actual serverless deployment. `build:gaze-demo` / `preview:gaze-demo` retain the cloud-disabled camera-enabled profile on 4174. `build:demo` / `preview:demo` retain the camera-free, cloud-disabled frontend on 4173. The full local `build` / `dev` / `api` commands remain. All builds replace `dist`; inspect release metadata to avoid deploying the wrong profile. Previous approved production deployments remain the rollback target, not an unverified local artifact.
 
-`npm run build` remains the full local build, including local gaze asset preparation. Both build profiles use `dist`; building one replaces the other's output. Inspect `dist/release-info.json` before serving the frontend demo. Do not deploy an earlier/full-local build by mistake.
+Before publication, run all tests, typecheck, production build, dependency/credential scans and a clean tracked-source build. Targeted tests already exercised real local Redis Lua atomicity, concurrency, replay, budgets and revocation; they did not contact production providers. New code still needs combined review and final checks.
 
-The demo disables Vite's public-directory copying, so ignored `public/gaze` model/WASM/worker assets cannot enter `dist`. The compile-time route gate removes the gaze import, and the build plugin rejects any gaze, RealEye or MediaPipe module that reaches the demo bundle. The supported application route is `/`; no blanket SPA rewrite is configured. `/api/*` and `/gaze-experiment` should return 404, not the application HTML. The local demo preview uses Vite's MPA mode to exercise that behavior.
+After deploying the exact reviewed commit, verify READY plus anonymous HTTPS, matching source metadata, license/model/WASM responses and security headers. Verify denied cloud access, code authentication, server-side logout, one actual fictional Gemini result, one separately authorized ElevenLabs response and one consented Scribe transcription. Distinguish generated audio bytes from owner-confirmed audibility. Check real camera activation/cleanup, switch-only recovery and silent Review/separate speech authorization. Record actual results and failures; do not substitute mocks for provider or physical acceptance.
 
-## Headers, source and licenses
-
-`vercel.json` and the local demo preview share the same tested header values. The CSP allows same-origin scripts, styles and static images, with inline styles retained for existing React styling. It denies outbound application connections, workers, media, embedding and forms. Permissions Policy denies camera and microphone by design while permitting same-origin Web Serial. Referrer Policy is `no-referrer`; content sniffing and framing are disabled. These are prepared/tested configuration values, not observed headers from a public deployment.
-
-The build emits `/release-info.html`, `/release-info.json`, `/LICENSE.txt`, `/THIRD_PARTY_NOTICES.md`, and full MIT license texts under `/licenses/` for bundled React, React DOM and Scheduler. A demo-only footer link exposes source/license information without changing normal local UI.
-
-Source metadata uses the current Git HEAD or `VERCEL_GIT_COMMIT_SHA`, validates complete matching hashes, and records dirty-worktree status. An uncommitted local preparation build explicitly warns that its HEAD link is not the complete source. Vercel builds reject an absent revision or a known dirty tree. The build never claims it verified public source availability. The owner-approved AGPL-3.0-or-later license and notices remain in force; before any public release, publish the exact corresponding approved source and verify its specific commit URL. The old public `main` is not automatically the corresponding source for this build. Remote publication and deployment still require separate authorization.
-
-## Read-only account observations
-
-Observed November 15, 2026:
-
-- Connected Vercel team: `penuels-projects-aa802b06` (`team_7zBDrVIlwYth2sXkAbBPcbYw`).
-- No matching project was found by `still` name search or exact repository URL `https://github.com/iampenuel/stillmyvoice` in that team.
-- The connected Vercel GitHub repository search returned no `stillmyvoice` entry. Correct GitHub installation/repository access may need owner configuration before a later import; its absence is not proof that the repository does not exist.
-- GitHub read-only branch listing showed only `main`, at `a0c6491707f8c06cc9a12d2e8e3c2a5d9124fd44`, unprotected. No branch was pushed or altered.
-- `stillmyvoice.club` was not found in this Vercel team's domain inventory. This does not contradict the owner's registration report or prove the domain is unregistered. No registrar/DNS control was established by that check.
-
-## Local API audit and public-backend blockers
-
-The existing server has six routes: `GET /api/status`, plus `POST /api/voices`, `/api/speech`, `/api/transcription`, `/api/expansion` and `/api/suggestions`. They are served by the loopback Node process at `127.0.0.1:5174`, with local-only Host/Origin allowlists; there are no Vercel API functions. The client already uses same-origin `/api/*`, not a public localhost fallback. A static deployment cannot provide these endpoints.
-
-Live Gemini, ElevenLabs speech and Scribe gates intentionally reject `NODE_ENV=production` and depend on a private, ignored account-protection record. Do not copy that record or provider keys into a static release, or bypass the gates. Public-user authentication is absent: fictional-content consent and speech authorization are not public-service authentication. Request limits, replay protections and budgets are process-local: HTTP 60 requests/minute; Gemini defaults to 300 requests with five-second spacing and one in-flight call; ElevenLabs 10,000 characters/100 authorizations; transcription 10 requests/120 seconds of audio. A public backend needs separately approved routing/authentication, durable shared enforcement and verified account protections before live services can be offered. Actual provider429 responses remain separate from local budgets.
-
-## Observed local release verification
-
-324 automated tests, typecheck, full local build and frontend-demo build passed. The production-bundle test found no gaze/RealEye/MediaPipe modules/assets. The dependency audit reported zero vulnerabilities; in-memory comparison against the two private provider-key values found zero source/bundle matches. Chrome rendered the main and gaze routes locally; the static demo displayed unavailable cloud controls and no console errors. A temporary loopback request log observed only `/` and its CSS/JS during a fresh demo load and context selection, with zero application API calls. Explicit HTTP checks (separate from browser traffic) returned404 for `/api/status`, `/api/speech`, `/gaze-experiment` and a gaze asset path. CSP/Permissions Policy and license URLs were verified on the local preview.
-
-Actual HTTPS camera/Web Serial operation on `stillmyvoice.club` has **not** been tested because no deployment/domain change is authorized. The proposed demo intentionally denies camera/microphone. Web Serial is available only in secure contexts and first-use permission remains origin-specific ([WebSerial standard](https://serial.spec.whatwg.org/#extensions-to-the-navigator-interface)); Chrome requires an explicit user gesture for its chooser ([Chrome documentation](https://developer.chrome.com/docs/capabilities/serial#open_a_serial_port)). A future separately approved gaze release would require HTTPS/permission and a policy allowing camera, plus its own physical acceptance ([camera requirements](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#privacy_and_security)). None of this establishes a physical pass on an uncreated public deployment.
-
-## Later domain handoff — no changes performed
-
-After separate approval of the exact source and deployment:
-
-1. Confirm the intended Vercel team, approved repository/commit, project and environment. Resolve any missing GitHub installation access. Importing a project may itself create a deployment; do not treat import as read-only setup.
-2. Verify the authorized deployment and its capabilities on the generated HTTPS URL first. Recheck source/license links, zero application `/api` requests, disabled camera/microphone, and the complete browser/physical-switch workflow on that origin.
-3. Add `stillmyvoice.club` and, if desired, `www.stillmyvoice.club` to the confirmed project. Obtain the actual expected A/CNAME and any ownership TXT records from that project's Domains settings. Do not reuse a generic fixed IP or CNAME from an example.
-4. With separate DNS authorization, enter only those records at the authoritative DNS provider. Preserve unrelated MX/TXT/other records. No domain purchase, registrar transfer or nameserver change is required merely to connect an owned domain.
-5. Verify domain ownership/configuration, propagation and HTTPS certificate readiness. Choose any apex/www redirect deliberately. Successful record entry alone is not proof the domain is live.
-
-Remaining gates are owner release approval, exact corresponding-source publication, confirmed Vercel project/repository access, authorized deployment, and separately authorized domain/DNS changes. No API credential is needed for this frontend-only profile.
-
-Official references: [Vite on Vercel](https://vercel.com/docs/frameworks/frontend/vite), [Git deployment controls](https://vercel.com/docs/project-configuration/git-configuration), [custom-domain setup](https://vercel.com/docs/domains/set-up-custom-domain), [Vite preview proxy behavior](https://vite.dev/config/preview-options#preview-proxy).
+Chrome camera/Web Serial permissions belong to each origin, so localhost permission or earlier hardware acceptance is not a public-origin pass. Devpost remains a separate owner-controlled submission step; source publication and deployment do not submit the entry. Protect the November 15, 8:00 AM Eastern cutoff and stop unrelated development.

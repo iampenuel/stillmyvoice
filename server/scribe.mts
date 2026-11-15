@@ -1,3 +1,4 @@
+import { providerModeConfigured, consumeProviderPermit, type PublicProviderPermit } from './public-demo-permit.mts';
 /** Server-only, bounded fictional recording transcription. Audio stays in memory. */
 import { boundedBody, ProviderError } from './elevenlabs.mts';
 export const SCRIBE_MODEL='scribe_v3';
@@ -22,9 +23,9 @@ export function validateRecording(value:unknown):{request:TranscriptionRequest;a
   if(!valid)throw new ProviderError('AUDIO_FORMAT_MISMATCH',422);
   return{request:r as TranscriptionRequest,audio:new Uint8Array(audio),mime,extension:extensions[mime]};
 }
-export function createScribe(env:Record<string,string|undefined>,fetcher:typeof fetch=fetch){
+export function createScribe(env:Record<string,string|undefined>,fetcher:typeof fetch=fetch,publicPermit?:PublicProviderPermit){
   const key=env.ELEVENLABS_API_KEY;
-  const enabled=Boolean(env.SMV_CLOUD_MODE==='local-synthetic-demo'&&env.NODE_ENV!=='production'&&env.SMV_ELEVENLABS_CREDITS_CONFIRMED==='true'&&key&&key.length>=12&&!/\s/.test(key));
+  const enabled=Boolean(providerModeConfigured(env)&&env.SMV_ELEVENLABS_CREDITS_CONFIRMED==='true'&&key&&key.length>=12&&!/\s/.test(key));
   let busy=false,recordedMs=0;const consumed=new Set<string>();
   return{
     status:()=>({available:enabled,model:SCRIBE_MODEL,requests:consumed.size,recordedMs,sessionDurationLimitMs:120_000,sessionRequestLimit:10}),
@@ -34,6 +35,7 @@ export function createScribe(env:Record<string,string|undefined>,fetcher:typeof 
       if(busy)throw new ProviderError('TRANSCRIPTION_BUSY',409);
       if(consumed.has(request.id))throw new ProviderError('RECORDING_ALREADY_SUBMITTED',409);
       if(consumed.size>=10||recordedMs+request.durationMs>120_000)throw new ProviderError('TRANSCRIPTION_LIMIT',429);
+      if(!consumeProviderPermit(env,publicPermit,'scribe',{id:request.id,units:20_000}))throw new ProviderError('PUBLIC_RESERVATION_REQUIRED',403);
       consumed.add(request.id);recordedMs+=request.durationMs;busy=true;
       const bounded=AbortSignal.any([signal,AbortSignal.timeout(12_000)]);
       try{

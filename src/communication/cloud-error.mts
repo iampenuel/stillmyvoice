@@ -4,6 +4,15 @@ export function cloudFailure(status: number, payload: unknown): string {
   const retry = Number.isInteger(data.retryAfterSeconds) && Number(data.retryAfterSeconds) >= 0 && Number(data.retryAfterSeconds) <= 86400 ? Number(data.retryAfterSeconds) : null;
   const limit = Number.isSafeInteger(data.sessionLimit) && Number(data.sessionLimit) > 0 ? Number(data.sessionLimit) : null;
   switch (data.error) {
+    case 'DEMO_ACCESS_REQUIRED': case 'DEMO_ACCESS_DENIED': return 'Unlock Demo access in Companion setup, then make a new request. Your words are kept.';
+    case 'DEMO_RATE_LIMIT': return `The shared demo is receiving requests too quickly.${retry !== null ? ` Wait ${retry} seconds.` : ''} Your words are kept.`;
+    case 'DEMO_SHARED_BUDGET_EXHAUSTED': return 'The shared public demo allowance is used. Continue with your own words and browser speech.';
+    case 'DEMO_REQUEST_ALREADY_CONSUMED': return 'That request was already used. No duplicate was sent; your words are kept.';
+    case 'DEMO_REQUEST_BUSY': return 'Another demo request is still running. Your words are kept.';
+    case 'PUBLIC_DEMO_NOT_CONFIGURED': case 'DEMO_UNAVAILABLE': case 'DEMO_QUOTA_UNAVAILABLE': return 'The public demo safeguards are unavailable. No new provider request can start. Your words are kept.';
+    case 'PUBLIC_AUDIO_FORMAT_REQUIRED': return 'The recording could not be safely bounded. Record a new clip of up to 20 seconds.';
+    case 'ELEVENLABS_QUOTA': return 'ElevenLabs reported its provider quota limit. Your words are kept; browser speech is available after a new review and approval.';
+
     case 'ASSISTANCE_COOLDOWN': return `Please wait ${retry ?? 5} seconds before another wording request. Your words are kept.`;
     case 'ASSISTANCE_BUSY': return 'Another wording request is still running. Your words are kept.';
     case 'ASSISTANCE_SESSION_LIMIT': return `The local demo allowance${limit !== null ? ` of ${limit} wording requests` : ' for wording requests'} is used. Continue with your own words.`;

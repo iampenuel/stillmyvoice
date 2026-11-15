@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { FRONTEND_DEMO, FRONTEND_CLOUD_UNAVAILABLE } from './release-capabilities.mts';
+import { FRONTEND_DEMO, FRONTEND_CLOUD_UNAVAILABLE, RELEASE_CAPABILITIES, PUBLIC_DEMO, PUBLIC_RELEASE } from './release-capabilities.mts';
 import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, withCloudDefaults, speechEvent, title, candidateVoice, alphabetRows, type Model, type Choice } from './communication/model.mts';
+import { DemoAccess } from './communication/DemoAccess';
 import { InputCoordinator } from './communication/input-coordinator.mts';
 import { browserSpeechEngine, routeSpeechEngine, SpeechController } from './communication/speech.mts';
 import { measureReviewPages } from './communication/review-layout.mts';
@@ -324,7 +325,7 @@ export function App() {
         </div>
       </section>
     </div>
-    <footer><p>Draft kept in this tab. Reloading clears it.</p>{FRONTEND_DEMO ? <a href="/release-info.html">Source and license</a> : null}<button type="button" className="setup-trigger" onClick={openSetup}>Companion setup</button>
+    <footer><p>Draft kept in this tab. Reloading clears it.</p>{PUBLIC_RELEASE ? <a href="/release-info.html">Source and license</a> : null}<button type="button" className="setup-trigger" onClick={openSetup}>Companion setup</button>
       {coordinator.current?.mode === 'simulation' ? <button ref={simButton} type="button" className="simulation-switch"
         onPointerDown={e => { if (e.button === 0) { e.currentTarget.setPointerCapture(e.pointerId); simulationDown('pointer:' + e.pointerId); } }}
         onPointerUp={e => simulationUp('pointer:' + e.pointerId)} onPointerCancel={() => coordinator.current?.stop('Simulation pointer cancelled')}
@@ -349,6 +350,16 @@ export function App() {
         });
       }}>Connect Pico</button>
         <button type="button" onClick={() => coordinator.current?.stop('Explicit disconnect')}>Pause / disconnect Pico</button></div>
+      {RELEASE_CAPABILITIES.gazeExperiment ? <section aria-labelledby="gaze-setup-title">
+        <h3 id="gaze-setup-title">Eye gaze — Experimental</h3>
+        <p>Camera off by default. Local estimates only; accuracy is not verified. The separate sandbox uses the physical switch to confirm actions and cannot select or speak in your communication workspace.</p>
+        <a href="/gaze-experiment" target="_blank" rel="noopener noreferrer">Open eye gaze experiment in a new tab</a>
+        <p>Your message stays in this tab. Stop the camera before returning to switch-only communication.</p>
+      </section> : null}
+      {PUBLIC_DEMO ? <DemoAccess onChanged={() => {
+        const before = current.current;
+        commit({ ...before, cloud: { ...before.cloud, consent: false, elevenlabs: false, gemini: false, refresh: before.cloud.refresh + 1 } });
+      }} /> : null}
       <h3>Optional cloud demo</h3>
       {FRONTEND_DEMO ? <p>{FRONTEND_CLOUD_UNAVAILABLE}</p> : null}
       <label><input type="checkbox" checked={model.cloud.consent} disabled={FRONTEND_DEMO} onChange={event => {

@@ -1,7 +1,7 @@
 import { FRONTEND_CLOUD_UNAVAILABLE, requireCloudServices } from '../release-capabilities.mts';
 import { useEffect } from 'react';
 import { cloudServicesEnabled, listeningEvent, type Model } from './model.mts';
-import { browserRecording } from './recording.mts';
+import { browserRecording, PublicRecordingUnavailableError } from './recording.mts';
 type Props = { model: Model; current: { current: Model }; commit: (model: Model) => void; canUpdate: () => boolean };
 const active = () => document.hasFocus() && document.visibilityState === 'visible';
 export function ListeningRuntime({ model, current, commit, canUpdate }: Props) {
@@ -47,7 +47,7 @@ export function ListeningRuntime({ model, current, commit, canUpdate }: Props) {
       await Promise.resolve();
       if (!valid() || current.current.listen.phase !== 'requesting') return;
       try { await recorder.start(); started = true; if (!valid()) { recorder.cancel(); return; } publish('recording'); }
-      catch { if (valid()) publish('error', 'Microphone unavailable or permission denied. Your message is unchanged.'); }
+      catch (error) { if (valid()) publish('error', error instanceof PublicRecordingUnavailableError ? error.message : 'Microphone unavailable or permission denied. Your message is unchanged.'); }
     })();
     return () => { cancel(); clearInterval(timer); window.removeEventListener('blur', inactive); document.removeEventListener('visibilitychange', inactive); };
   }, [id]);
