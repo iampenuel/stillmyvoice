@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 
@@ -23,13 +25,30 @@ export function releaseProvenance(input: { gitRevision?: string; vercelRevision?
   if (input.vercel && input.dirty === true) throw Error('Vercel frontend builds require an identified committed source revision: the working tree is dirty.');
   return Object.freeze({ revision, dirty: input.dirty, sourceUrl: revision ? 'https://github.com/iampenuel/stillmyvoice/tree/' + revision : null, publicationVerified: false });
 }
+/** Vercel may reserialize its JSON config. Only an exact parsed-value match is harmless. */
+export function releaseTreeDirty(status: string, committedConfig?: string, currentConfig?: string): boolean {
+  const changes = status.split('\n').filter(line => line.trim());
+  if (!changes.length) return false;
+  if (changes.length !== 1 || changes[0] !== ' M vercel.json' || committedConfig === undefined || currentConfig === undefined) return true;
+  try { return !isDeepStrictEqual(JSON.parse(committedConfig), JSON.parse(currentConfig)); } catch { return true; }
+}
 function provenance(): ReleaseProvenance {
   const cwd = fileURLToPath(new URL('../', import.meta.url));
   let gitRevision: string | undefined, dirty: boolean | null = null;
   try {
     gitRevision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    const status = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const status = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trimEnd();
     dirty = status.length > 0;
+    if (process.env.VERCEL === '1' && status === ' M vercel.json') {
+      const committed = execFileSync('git', ['show', 'HEAD:vercel.json'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const current = readFileSync(new URL('../vercel.json', import.meta.url), 'utf8');
+      dirty = releaseTreeDirty(status, committed, current);
+      if (dirty) {
+        const before = JSON.parse(committed), after = JSON.parse(current);
+        const changedKeys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(key => !isDeepStrictEqual(before[key], after[key]));
+        console.error('SMV builder changed configuration keys: ' + JSON.stringify(changedKeys));
+      }
+    }
     // Paths only; never print file contents, environment values or credentials.
     if (process.env.VERCEL === '1' && dirty) console.error('SMV build changed paths: ' + JSON.stringify(status.split('\n').slice(0, 20)));
   } catch { /* Git metadata can be absent in an immutable Vercel Git build. */ }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { build, resolveConfig } from 'vite';
-import { frontendDemoHeaders, releaseProvenance, releaseInfoHtml } from '../scripts/frontend-demo-profile.mts';
+import { frontendDemoHeaders, releaseProvenance, releaseInfoHtml, releaseTreeDirty } from '../scripts/frontend-demo-profile.mts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sha = 'a'.repeat(40);
@@ -81,4 +81,16 @@ test('actual frontend build excludes experimental modules/assets and retains ful
   } finally {
     if (previous === undefined) delete process.env.VITE_SMV_RELEASE_MODE; else process.env.VITE_SMV_RELEASE_MODE = previous;
   }
+});
+
+test('builder JSON reformatting is allowed only when every committed setting is identical', () => {
+  const original = JSON.stringify({buildCommand:'npm run build:demo',headers:[{key:'Content-Security-Policy',value:"connect-src 'none'"}]});
+  const reformatted = JSON.stringify(JSON.parse(original), null, 4) + '\n';
+  assert.equal(releaseTreeDirty('',original,reformatted),false);
+  assert.equal(releaseTreeDirty(' M vercel.json\n',original,reformatted),false);
+  assert.equal(releaseTreeDirty(' M vercel.json',original,JSON.stringify({buildCommand:'npm run build'})),true);
+  assert.equal(releaseTreeDirty(' M vercel.json',original,'invalid'),true);
+  assert.equal(releaseTreeDirty(' M vercel.json\n M src/App.tsx',original,reformatted),true);
+  assert.equal(releaseTreeDirty(' M vercel.json\n?? unexpected.js',original,reformatted),true);
+  assert.equal(releaseTreeDirty('M  vercel.json',original,reformatted),true);
 });
