@@ -1,6 +1,8 @@
 import { createSwitchState, reduceSwitch, type SwitchState, type View, type Selection } from '../input/switch-machine.mts';
 import { requestSerialAdapter, type DataPort, type SerialChooser, type AdapterCallbacks } from '../input/web-serial-adapter.mts';
 
+export type GazeNomination = Readonly<{ targetId:string;viewId:string;revision:number;validUntilMs:number }>;
+export type GazeInput = Readonly<{ enabled:boolean;candidate:GazeNomination|null }>;
 type Connection = Awaited<ReturnType<typeof requestSerialAdapter>>;
 type Factory = (chooser: SerialChooser, verify: (port: DataPort) => Promise<boolean>, callbacks: AdapterCallbacks) => Promise<Connection>;
 /** App navigation coordinator. The accepted kernel, framing and transport are unchanged.
@@ -19,6 +21,7 @@ export class InputCoordinator {
   private port: DataPort | null = null;
   private focusRecoveryPort: DataPort | null = null;
   private held = false;
+  private heldGazeUntil:number|null=null;
   private view: View;
   private readonly changed: (state: SwitchState, status: string) => void;
   private readonly selected: (selection: Selection, source: 'hardware' | 'simulation') => void;
@@ -28,12 +31,16 @@ export class InputCoordinator {
   private readonly nonce: () => string;
   private readonly disconnectedSettle: () => Promise<void>;
   private readonly diagnostic: (detail: string) => void;
+  private readonly gaze: () => GazeInput;
+  private readonly now: () => number;
   private readonly targetVisible: (id: string) => boolean;
   constructor(view: View, callbacks: {
     changed: (state: SwitchState, status: string) => void;
     selected: (selection: Selection, source: 'hardware' | 'simulation') => void;
     interrupted: (reason: string) => void;
     diagnostic?: (detail: string) => void;
+    gaze?: () => GazeInput;
+    now?: () => number;
     targetVisible?: (id: string) => boolean;
   }, factory: Factory = requestSerialAdapter, active = () => document.hasFocus() && document.visibilityState === 'visible', nonce: () => string = () => crypto.randomUUID(),
   disconnectedSettle: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 200))) {
@@ -41,6 +48,8 @@ export class InputCoordinator {
     this.interrupted = callbacks.interrupted; this.factory = factory; this.active = active; this.nonce = nonce;
     this.disconnectedSettle = disconnectedSettle;
     this.diagnostic = callbacks.diagnostic ?? (() => {});
+    this.gaze = callbacks.gaze ?? (() => ({enabled:false,candidate:null}));
+    this.now = callbacks.now ?? (() => performance.now());
     this.targetVisible = callbacks.targetVisible ?? (() => true);
     this.state = createSwitchState(view, nonce());
   }
@@ -51,12 +60,44 @@ export class InputCoordinator {
     state = reduceSwitch(state, { type: 'connect' }).state;
     this.state = state; this.publish(); return state.epoch;
   }
+  private validGaze(input:GazeInput):GazeNomination|null {
+    const c=input.candidate, now=this.now();
+    return c && Number.isFinite(now) && Number.isFinite(c.validUntilMs) && c.validUntilMs>=now && c.validUntilMs-now<=350
+      && c.viewId===this.view.id && c.revision===this.view.revision && this.view.targets.includes(c.targetId) ? c : null;
+  }
+  /** Gaze moves focus through kernel ticks only. It never manufactures physical edges. */
+  nominate() {
+    const gaze=this.gaze(); if(!gaze.enabled || this.mode!=='hardware')return;
+    const candidate=this.validGaze(gaze);
+    if(this.state.phase==='held') {
+      if(!candidate || candidate.targetId!==this.state.capture?.targetId || !this.targetVisible(candidate.targetId) || (this.heldGazeUntil!==null && candidate.validUntilMs-this.heldGazeUntil>350)) this.stop('Gaze target changed during press — selection canceled');
+      else this.heldGazeUntil=candidate.validUntilMs;
+      return;
+    }
+    if(!this.active() || this.state.phase!=='armed' || !candidate)return;
+    const before=this.state.index;
+    for(let steps=0;steps<this.view.targets.length && this.state.view?.targets[this.state.index]!==candidate.targetId;steps++) {
+      this.state=reduceSwitch(this.state,{type:'tick',epoch:this.state.epoch}).state;
+    }
+    if(before!==this.state.index)this.publish();
+  }
   private dispatch(event: unknown): ReturnType<typeof reduceSwitch> {
+    if(event && typeof event==='object' && 'type' in event && (event.type==='down' || event.type==='up')) {
+      const gaze=this.gaze();
+      if(!gaze.enabled && this.heldGazeUntil!==null){this.stop('Input mode changed during press');return {state:this.state,selection:null};}
+      if(gaze.enabled) {
+        const candidate=this.validGaze(gaze), target=this.state.capture?.targetId ?? this.state.view?.targets[this.state.index];
+        if(this.mode!=='hardware' || !candidate || candidate.targetId!==target || (this.heldGazeUntil!==null && candidate.validUntilMs-this.heldGazeUntil>350)) {
+          this.stop('No matching fresh gaze target — selection canceled'); return {state:this.state,selection:null};
+        }
+        this.heldGazeUntil=candidate.validUntilMs;
+      }
+    }
     if (event && typeof event === 'object' && 'type' in event && (event.type === 'down' || event.type === 'up')
       && !this.targetVisible(this.state.view?.targets[this.state.index] ?? '')) {
       this.stop('Current choice is not fully visible'); return { state: this.state, selection: null };
     }
-    const next = reduceSwitch(this.state, event); this.state = next.state; this.publish();
+    const next = reduceSwitch(this.state, event); this.state = next.state; if(this.state.phase!=='held')this.heldGazeUntil=null; this.publish();
     if (next.selection && this.mode !== 'none') this.selected(next.selection, this.mode);
     return next;
   }
@@ -193,5 +234,5 @@ export class InputCoordinator {
     if (this.state.phase === 'needs-sync') this.dispatch({ type: 'sync', epoch: this.state.epoch, sequence: (this.state.lastSequence ?? -1) + 1, pressed: false });
     else if (this.state.capture) this.dispatch({ type: 'up', epoch: this.state.epoch, sequence: this.state.lastSequence! + 1, downSequence: this.state.capture.downSequence });
   }
-  tick() { if (this.active()) this.dispatch({ type: 'tick', epoch: this.state.epoch }); else this.suspend('Page inactive'); }
+  tick() { if(this.gaze().enabled){this.nominate();return;} if (this.active()) this.dispatch({ type: 'tick', epoch: this.state.epoch }); else this.suspend('Page inactive'); }
 }

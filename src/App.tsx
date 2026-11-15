@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { FRONTEND_DEMO, FRONTEND_CLOUD_UNAVAILABLE, RELEASE_CAPABILITIES, PUBLIC_DEMO, PUBLIC_RELEASE } from './release-capabilities.mts';
 import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, withCloudDefaults, speechEvent, title, candidateVoice, alphabetRows, type Model, type Choice } from './communication/model.mts';
 import { DemoAccess } from './communication/DemoAccess';
@@ -14,6 +14,9 @@ import { fullyVisible, revealInPanel } from './communication/view-layout.mts';
 import type { SerialChooser } from './input/web-serial-adapter.mts';
 import type { SwitchState } from './input/switch-machine.mts';
 
+import type { MainGazeHandle, MainGazeLayout } from './gaze/MainGaze';
+const MainGazeRuntime = import.meta.env.VITE_SMV_RELEASE_MODE !== 'frontend-demo' ? lazy(() => import('./gaze/MainGaze').then(module => ({default:module.MainGaze}))) : null;
+
 const active = () => document.hasFocus() && document.visibilityState === 'visible';
 export function App() {
   const [storedModel, render] = useState(() => initialModel(crypto.randomUUID()));
@@ -24,6 +27,10 @@ export function App() {
   const speech = useRef<SpeechController | null>(null);
   const [input, setInput] = useState<SwitchState | null>(null);
   const [status, setStatus] = useState('Not connected');
+  const [gazeEnabled,setGazeEnabled]=useState(false);
+  const gazeEnabledRef=useRef(false);
+  const gazeRuntime=useRef<MainGazeHandle|null>(null);
+  const [gazeCandidate,setGazeCandidate]=useState<string|null>(null);
   const [verified, setVerified] = useState(false);
   const [counts, setCounts] = useState({ hardware: 0, simulation: 0, companion: 0 });
   const [log, setLog] = useState<string[]>([]);
@@ -49,6 +56,7 @@ export function App() {
     const retired = retireRuntimeAuthorization(current.current);
     if (retired !== current.current) commit(retired);
     const controller = new InputCoordinator(inputView(current.current), {
+      gaze:()=>({enabled:gazeEnabledRef.current,candidate:gazeEnabledRef.current?gazeRuntime.current?.read()??null:null}),
       changed: (next, detail) => { setInput(next); setStatus(detail); },
       selected: (selection, source) => {
         const before = current.current;
@@ -147,18 +155,19 @@ export function App() {
   const scanning = input?.phase === 'armed' && input.connected && input.active;
   const held = input?.phase === 'held';
   useLayoutEffect(() => {
-    if (!(scanning || held) || !target) return;
+    if (gazeEnabled || !(scanning || held) || !target) return;
     const element = buttons.current.get(target);
     if (element && choiceRegion.current) revealInPanel(element, choiceRegion.current);
-  }, [target, scanning, held, model.uiRevision]);
+  }, [target, scanning, held, model.uiRevision, gazeEnabled]);
 
   useEffect(() => {
-    if (!scanning || choices(current.current).filter(x => !x.disabled).length < 2) return;
+    if (gazeEnabled || !scanning || choices(current.current).filter(x => !x.disabled).length < 2) return;
     const controller = coordinator.current, epoch = input!.epoch;
     const delay = model.settings.pace * (input!.index === 0 ? 1.5 : 1);
     const timer = setTimeout(() => { if (controller?.state.epoch === epoch) controller.tick(); }, delay);
     return () => clearTimeout(timer);
-  }, [scanning, input?.epoch, input?.index, model.settings.pace]);
+  }, [scanning, input?.epoch, input?.index, model.settings.pace, gazeEnabled]);
+  useEffect(()=>{if(!gazeEnabled)return;const timer=setInterval(()=>coordinator.current?.nominate(),25);return()=>clearInterval(timer);},[gazeEnabled]);
 
   useEffect(() => {
     voiceUpdate.current?.();
@@ -234,8 +243,25 @@ export function App() {
     coordinator.current?.stop('Companion setup opened');
     speech.current?.cancel(); setCompanionOpen(true); setup.current?.showModal();
   };
+  const changeInputMode=(enabled:boolean)=>{
+    coordinator.current?.stop('Input mode changed — reconnect the switch');speech.current?.cancel();
+    gazeRuntime.current?.stop();gazeEnabledRef.current=enabled;setGazeEnabled(enabled);setGazeCandidate(null);
+    setup.current?.close();
+  };
+  const gazeLayout=():MainGazeLayout=>{
+    const state=current.current;
+    const targets=choices(state).filter(option=>!option.disabled).flatMap(option=>{
+      const button=buttons.current.get(option.id),panel=choiceRegion.current;
+      if(!button||!panel||setup.current?.open||!fullyVisible(button,panel))return [];
+      const box=button.getBoundingClientRect();
+      // Smaller letters abstain; the existing full-width keyboard rows remain eligible.
+      if(box.width<80||box.height<48)return [];
+      return [{id:option.id,left:box.left,top:box.top,width:box.width,height:box.height}];
+    });
+    return {viewId:state.screen.name,revision:state.uiRevision,targets};
+  };
   const renderChoice = (option: Choice) => {
-    const selected = !!((scanning || held) && target === option.id && input?.view?.revision === model.uiRevision);
+    const selected = !!((scanning || held) && (!gazeEnabled || held || gazeCandidate===option.id) && target === option.id && input?.view?.revision === model.uiRevision);
     let shown = option.id === 'resume' && !(scanning || held)
       ? { ...option, label: 'Return to message', detail: 'Companion control. This does not reconnect the switch.' } : option;
     if (compactAlphabet) {
@@ -243,11 +269,11 @@ export function App() {
         : option.id === 'keyboard-layout' ? 'Grouped keyboard' : option.label;
       shown = { ...shown, label, detail: option.id === 'erase' ? 'Last character' : undefined };
     }
-    return <ChoiceButton key={option.id} option={shown} selected={selected} held={held}
+    return <ChoiceButton key={option.id} option={shown} selected={selected} held={held} gazeCandidate={gazeEnabled && gazeCandidate===option.id} focusLabel={gazeEnabled?'Switch focus':'Scan focus'}
       register={element => { if (element) buttons.current.set(option.id, element); else buttons.current.delete(option.id); }}
       activate={() => companion(option.id)} />;
   };
-  return <main data-large-text={model.settings.size >= 150} data-page-focused={pageActivity.focused} data-page-visible={pageActivity.visible} style={{ '--text-scale': model.settings.size / 100 } as CSSProperties}
+  return <main data-gaze-enabled={gazeEnabled} data-large-text={model.settings.size >= 150} data-page-focused={pageActivity.focused} data-page-visible={pageActivity.visible} style={{ '--text-scale': model.settings.size / 100 } as CSSProperties}
     onPointerDownCapture={event => {
       if (event.target !== simButton.current && coordinator.current?.mode !== 'none') {
         coordinator.current?.stop('Companion pointer — physical scanning paused', false);
@@ -267,10 +293,12 @@ export function App() {
       <div><p className="product-name">Still My Voice</p><p className="tagline">Communication, on your terms.</p></div>
       <span className="prototype">Non-clinical prototype</span></header>
     <div className="status-strip" aria-label="Input status">
-      <span className="input-mode">{coordinator.current?.mode === 'simulation' ? 'Simulation' : coordinator.current?.mode === 'hardware' ? 'Physical switch' : 'Input paused'}</span>
+      <span className="input-mode">{coordinator.current?.mode === 'simulation' ? 'Simulation' : coordinator.current?.mode === 'hardware' ? gazeEnabled ? 'Eye gaze + switch (Experimental)' : 'Physical switch' : 'Input paused'}</span>
       <span>{held ? 'Held · release to choose' : scanning ? model.screen.name === 'paused' ? 'Ready to resume' : 'Scanning' : recovery.label}</span>
       <span className="input-position">{input?.pressed === null || !input ? 'Awaiting synchronization' : input.pressed ? 'Pressed' : 'Released'}</span>
     </div>
+    {gazeEnabled && MainGazeRuntime ? <Suspense fallback={<p className="small">Loading optional gaze controls…</p>}><MainGazeRuntime layout={gazeLayout}
+      register={handle=>{gazeRuntime.current=handle;}} candidate={setGazeCandidate} leave={()=>changeInputMode(false)} /></Suspense> : null}
     <div className="communication-workspace">
       <section className="message-panel" aria-labelledby="message-title">
         <div className="panel-heading"><h1 id="message-title">Your message</h1><span className="provenance">{model.provenance}</span>
@@ -314,12 +342,12 @@ export function App() {
           {alphabet ? <div className="alphabet-surface" aria-label="Visible alphabetical keyboard">
             {alphabetRows.map(row => {
               const rowStage = model.screen.value === 'rows', activeRow = model.screen.value === row;
-              const id = `row:${row}`, selected = !!((scanning || held) && target === id && input?.view?.revision === model.uiRevision);
+              const id = `row:${row}`, selected = !!((scanning || held) && (!gazeEnabled || held || gazeCandidate===id) && target === id && input?.view?.revision === model.uiRevision);
               return <div className="alphabet-row" key={row}>
-                {rowStage ? <div className="target-envelope" data-scan={selected} data-held={selected && held} data-choice={id}><button className="alphabet-row-control" type="button" aria-label={`Row ${row.toUpperCase().split('').join(' ')}`} ref={element => { if (element) buttons.current.set(id, element); else buttons.current.delete(id); }} onClick={() => companion(id)}><span className="alphabet-cells">{Array.from(row).map(char => <span className="alphabet-key" key={char}>{char.toUpperCase()}</span>)}</span></button></div>
+                {rowStage ? <div className="target-envelope" data-scan={selected} data-held={selected && held} data-choice={id} data-gaze={gazeEnabled && gazeCandidate===id}><button className="alphabet-row-control" type="button" aria-label={`Row ${row.toUpperCase().split('').join(' ')}`} ref={element => { if (element) buttons.current.set(id, element); else buttons.current.delete(id); }} onClick={() => companion(id)}><span className="alphabet-cells">{Array.from(row).map(char => <span className="alphabet-key" key={char}>{char.toUpperCase()}</span>)}</span></button></div>
                 : <div className="alphabet-cells">{Array.from(row).map(char => {
-                  const letterId = `char:${char}`, letterSelected = !!((scanning || held) && target === letterId && input?.view?.revision === model.uiRevision);
-                  return activeRow ? <div key={char} className="target-envelope" data-scan={letterSelected} data-held={letterSelected && held} data-choice={letterId}><button className="alphabet-key" type="button" aria-label={char.toUpperCase()} ref={element => { if (element) buttons.current.set(letterId, element); else buttons.current.delete(letterId); }} onClick={() => companion(letterId)}>{char.toUpperCase()}</button></div> : <span className="alphabet-key alphabet-inactive" key={char}>{char.toUpperCase()}</span>;
+                  const letterId = `char:${char}`, letterSelected = !!((scanning || held) && (!gazeEnabled || held || gazeCandidate===letterId) && target === letterId && input?.view?.revision === model.uiRevision);
+                  return activeRow ? <div key={char} className="target-envelope" data-scan={letterSelected} data-held={letterSelected && held} data-choice={letterId} data-gaze={gazeEnabled && gazeCandidate===letterId}><button className="alphabet-key" type="button" aria-label={char.toUpperCase()} ref={element => { if (element) buttons.current.set(letterId, element); else buttons.current.delete(letterId); }} onClick={() => companion(letterId)}>{char.toUpperCase()}</button></div> : <span className="alphabet-key alphabet-inactive" key={char}>{char.toUpperCase()}</span>;
                 })}</div>}
               </div>;
             })}
@@ -356,10 +384,11 @@ export function App() {
       }}>Connect Pico</button>
         <button type="button" onClick={() => coordinator.current?.stop('Explicit disconnect')}>Pause / disconnect Pico</button></div>
       {RELEASE_CAPABILITIES.gazeExperiment ? <section aria-labelledby="gaze-setup-title">
-        <h3 id="gaze-setup-title">Eye gaze — Experimental</h3>
-        <p>Camera off by default. Local estimates only; accuracy is not verified. The separate sandbox uses the physical switch to confirm actions and cannot select or speak in your communication workspace.</p>
-        <a href="/gaze-experiment" target="_blank" rel="noopener noreferrer">Open eye gaze experiment in a new tab</a>
-        <p>Your message stays in this tab. Stop the camera before returning to switch-only communication.</p>
+        <h3 id="gaze-setup-title">Input mode</h3>
+        <p>Switch-only is the default. Experimental eye gaze uses this device’s camera and local inference. Looking only nominates; a physical press and release confirms. Accuracy needs physical verification.</p>
+        <div className="controls"><button type="button" aria-pressed={!gazeEnabled} onClick={()=>changeInputMode(false)}>Switch-only</button>
+        <button type="button" aria-pressed={gazeEnabled} onClick={()=>changeInputMode(true)}>Eye gaze + switch (Experimental)</button></div>
+        <p>Camera and calibration controls appear here in the main workspace. No video is stored or uploaded. Changing input mode stops speech and requires fresh switch synchronization.</p>
       </section> : null}
       {PUBLIC_DEMO ? <DemoAccess onChanged={() => {
         const before = current.current;

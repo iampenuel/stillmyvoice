@@ -12,7 +12,7 @@ November 15, 2026. The owner authorized an access-controlled public backend, opt
 - Repository root `.`, framework Vite, Node 24, install `npm ci`, build `npm run build:public-demo`, output `dist`.
 - `git.deploymentEnabled: false` prevents automatic Git cutovers. Deploy the exact reviewed SHA manually after checks.
 
-The owner reported that the DNS cutover is complete and `stillmyvoice.club` loads over cellular HTTPS. This supersedes the earlier misconfigured-DNS observation. Recheck the final domain against the new deployment; no further DNS edits, nameserver changes or unrelated records are part of this application release.
+Canonical demonstration: https://stillmyvoice.vercel.app. The owner stopped custom-domain work after network-specific failures; leave the existing DNS/domain configuration intact.
 
 ## Public access and unchanged AAC authority
 
@@ -74,7 +74,7 @@ The full public CSP permits same-origin script/style/model/API traffic, same-ori
 
 ## Optional gaze, assets and source
 
-The optional experiment opens from Companion setup at `/gaze-experiment`. Camera defaults to OFF. Pinned RealEye 1.1.0 and MediaPipe 0.10.18 perform inference on the device. Gaze preview cannot select or speak in the production workspace. Sandbox selections require the existing physical-switch adapter/reducer, target capture on DOWN and one valid matching UP; no synthetic input or automatic gaze clicks are introduced. Physical pointer/target/switch acceptance remains pending, independently of model loading or earlier owner-observed Left/None/Right behavior.
+Companion setup offers default Switch-only and optional Eye gaze + switch (Experimental) in the main AAC workspace, with in-place camera/calibration. Reused local pointer/tracker logic nominates visible controls; the unchanged physical reducer confirms the captured target only on matching DOWN/UP. Tracking loss, stale evidence, target/revision/geometry changes and occlusion abstain. No synthetic edges or DOM clicks. Main-app physical accuracy/selection is pending. `/gaze-experiment` remains diagnostic only. Pinned RealEye 1.1.0 and MediaPipe 0.10.18 and all notices remain.
 
 `npm run prepare:gaze` builds the classic worker and copies both WASM variants/loaders and license notices. Its versioned Face Landmarker model is verified against SHA-256 `64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff`. A clean build downloads this public asset when absent; runtime CDN requests are unnecessary. Public-directory copying is disabled and required gaze files are explicitly emitted and integrity-checked. Private caches, reports, credentials and camera data are not artifacts.
 

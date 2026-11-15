@@ -2,14 +2,14 @@
 import { defaultGazeStability, type GazePoint, type GazeSample, type GazeViewport, type GazeStatus } from './gaze-logic.mts';
 
 export type GazePointerTargetId = 'phrases' | 'spell' | 'back' | 'scroll';
-export type GazePointerTarget = Readonly<{ id:GazePointerTargetId; left:number; top:number; width:number; height:number }>;
-export type GazePointerLayout = Readonly<{ viewport:GazeViewport; targets:readonly GazePointerTarget[] }>;
+export type GazePointerTarget<T extends string = GazePointerTargetId> = Readonly<{ id:T; left:number; top:number; width:number; height:number }>;
+export type GazePointerLayout<T extends string = GazePointerTargetId> = Readonly<{ viewport:GazeViewport; targets:readonly GazePointerTarget<T>[] }>;
 export type GazePointerReason = 'disabled' | 'collecting' | 'stable' | 'edge-or-gap' | 'dispersed' | 'no-prediction'
   | 'missing-face' | 'invalid-prediction' | 'stale' | 'non-monotonic' | 'invalid-layout' | 'layout-changed' | 'viewport-changed';
-export type GazePointerSnapshot = Readonly<{
+export type GazePointerSnapshot<T extends string = GazePointerTargetId> = Readonly<{
   status:GazeStatus; reason:GazePointerReason; calibrationRequired:boolean;
   rawPoint:GazePoint|null; smoothedPoint:GazePoint|null; stabilizedPoint:GazePoint|null;
-  candidateTargetId:GazePointerTargetId|null; sampleAtMs:number|null; validUntilMs:number|null; ageMs:number|null;
+  candidateTargetId:T|null; sampleAtMs:number|null; validUntilMs:number|null; ageMs:number|null;
   sampleCount:number; dispersionPx:number|null; observedForMs:number; stableSinceMs:number|null;
 }>;
 /** Rendering smoothing is separate from the unchanged temporal and 2D stability gates. */
@@ -20,18 +20,18 @@ const validTime = (n:number) => finite(n) && n>=0;
 const validViewport = (v:GazeViewport) => typeof v.key==='string' && !!v.key && finite(v.width) && finite(v.height) && v.width>0 && v.height>0;
 const sameViewport = (a:GazeViewport,b:GazeViewport) => a.key===b.key && a.width===b.width && a.height===b.height;
 const inside = (p:GazePoint,v:GazeViewport) => finite(p.x) && finite(p.y) && p.x>=0 && p.y>=0 && p.x<v.width && p.y<v.height;
-function validTargets(layout:GazePointerLayout):boolean {
+function validTargets(layout:GazePointerLayout<string>, application=false):boolean {
   const boxes=layout.targets, inset=gazePointerPolicy.edgeInsetPx;
   if(!boxes.length)return true;
-  if(boxes.length!==4 || new Set(boxes.map(b=>b.id)).size!==4)return false;
-  if(!boxes.every(b=>targetIds.includes(b.id) && [b.left,b.top,b.width,b.height].every(finite)
+  if((!application && boxes.length!==4) || boxes.length>100 || new Set(boxes.map(b=>b.id)).size!==boxes.length)return false;
+  if(!boxes.every(b=>(application ? typeof b.id==='string' && b.id.length>0 && b.id.length<=160 : targetIds.includes(b.id as GazePointerTargetId)) && [b.left,b.top,b.width,b.height].every(finite)
     && b.width>inset*2 && b.height>inset*2 && b.left>=0 && b.top>=0
     && b.left+b.width<=layout.viewport.width && b.top+b.height<=layout.viewport.height))return false;
   return boxes.every((a,i)=>boxes.every((b,j)=>i===j || a.left+a.width<=b.left || b.left+b.width<=a.left || a.top+a.height<=b.top || b.top+b.height<=a.top));
 }
 /** Direct hits only. Inset boundaries and gaps abstain; no nearest target or clamping. */
-export function pointerTargetAtPoint(point:GazePoint,layout:GazePointerLayout):GazePointerTargetId|null {
-  if(!validViewport(layout.viewport) || !validTargets(layout) || !inside(point,layout.viewport))return null;
+export function pointerTargetAtPoint<T extends string = GazePointerTargetId>(point:GazePoint,layout:GazePointerLayout<T>,application=false):T|null {
+  if(!validViewport(layout.viewport) || !validTargets(layout,application) || !inside(point,layout.viewport))return null;
   const inset=gazePointerPolicy.edgeInsetPx;
   const hits=layout.targets.filter(b=>point.x>b.left+inset && point.x<b.left+b.width-inset && point.y>b.top+inset && point.y<b.top+b.height-inset);
   return hits.length===1 ? hits[0].id : null;
@@ -42,7 +42,9 @@ function measure(history:readonly GazeSample[]):{point:GazePoint|null;dispersion
   return {point,dispersion:Math.max(...history.map(p=>Math.hypot(p.x-point.x,p.y-point.y))),duration:history.at(-1)!.capturedAt-history[0].capturedAt};
 }
 
-export class GazePointer {
+export class GazePointer<T extends string = GazePointerTargetId> {
+  private readonly application:boolean;
+  constructor(application=false) { this.application=application; }
   private enabled=false;
   private calibration:GazeViewport|null=null;
   private calibrationRequired=false;
@@ -52,9 +54,9 @@ export class GazePointer {
   private last:GazeSample|null=null;
   private smooth:GazePoint|null=null;
   private history:GazeSample[]=[];
-  private target:GazePointerTargetId|null|undefined=undefined;
-  private previousTarget:GazePointerTargetId|null=null;
-  private candidate:GazePointerTargetId|null=null;
+  private target:T|null|undefined=undefined;
+  private previousTarget:T|null=null;
+  private candidate:T|null=null;
   private stablePoint:GazePoint|null=null;
   private stableSince:number|null=null;
   private status:GazeStatus='disabled';
@@ -80,12 +82,12 @@ export class GazePointer {
     this.last=null;this.smooth=null;this.history=[];this.target=undefined;this.previousTarget=null;this.candidate=null;this.stablePoint=null;this.stableSince=null;
     this.status=status;this.reason=reason;
   }
-  private layoutValid(layout:GazePointerLayout,now:number):boolean {
+  private layoutValid(layout:GazePointerLayout<T>,now:number):boolean {
     if(!validViewport(layout.viewport) || !this.calibration || !sameViewport(this.calibration,layout.viewport)) {
       this.calibrationRequired=true;this.clear('calibration-required','viewport-changed');return false;
     }
     if(this.calibrationRequired)return false;
-    if(!validTargets(layout)){this.cutoff=now;this.clear('uncertain','invalid-layout');return false;}
+    if(!validTargets(layout,this.application)){this.cutoff=now;this.clear('uncertain','invalid-layout');return false;}
     const key=JSON.stringify([...layout.targets].sort((a,b)=>a.id.localeCompare(b.id)));
     if(this.layoutKey!==null && this.layoutKey!==key) {
       this.layoutKey=key;this.cutoff=now;this.clear('uncertain','layout-changed');return false;
@@ -93,7 +95,7 @@ export class GazePointer {
     this.layoutKey=key;return true;
   }
   /** sample must come from the worker's accepted point. Rejected diagnostic points must be null. */
-  observe(sample:GazeSample|null,now:number,layout:GazePointerLayout):GazePointerSnapshot {
+  observe(sample:GazeSample|null,now:number,layout:GazePointerLayout<T>):GazePointerSnapshot<T> {
     if(!this.enabled)return this.snapshot(now);
     if(!validTime(now)){this.clear('lost','invalid-prediction');return this.snapshot(0);}
     if(!this.layoutValid(layout,now))return this.snapshot(now);
@@ -113,7 +115,7 @@ export class GazePointer {
     const alpha=gazePointerPolicy.smoothingAlpha;
     this.smooth=this.smooth ? {x:alpha*sample.x+(1-alpha)*this.smooth.x,y:alpha*sample.y+(1-alpha)*this.smooth.y} : {x:sample.x,y:sample.y};
     this.last={...sample};
-    const hit=pointerTargetAtPoint(sample,layout);
+    const hit=pointerTargetAtPoint(sample,layout,this.application);
     if(hit!==this.target){this.history=[];this.target=hit;this.candidate=null;this.stablePoint=null;this.stableSince=null;}
     this.history.push({...sample});
     this.history=this.history.filter(p=>sample.capturedAt-p.capturedAt<=gazePointerPolicy.windowMs).slice(-gazePointerPolicy.maxSamples);
@@ -131,7 +133,7 @@ export class GazePointer {
     return this.snapshot(now);
   }
   /** Pass current geometry when polling so movement invalidates previews before the next frame. */
-  snapshot(now:number,layout?:GazePointerLayout):GazePointerSnapshot {
+  snapshot(now:number,layout?:GazePointerLayout<T>):GazePointerSnapshot<T> {
     if(this.enabled && layout && validTime(now))this.layoutValid(layout,now);
     if(this.enabled && !validTime(now))this.clear('lost','invalid-prediction');
     if(this.last && now<this.last.capturedAt)this.clear('lost','non-monotonic');

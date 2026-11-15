@@ -1,3 +1,11 @@
+# Current checkpoint — optional main-screen gaze integration
+
+November 15, 2026. The owner authorized integrating the existing gaze runtime into the main AAC application and publishing verified changes to the existing Vercel project. Canonical demonstration URL: https://stillmyvoice.vercel.app. Stop custom-domain work; preserve its configuration. Switch-only remains the default. Explicit experimental mode starts local camera/calibration in-place and nominates visible targets through the existing coordinator; the unchanged physical reducer alone emits selections. Captured target, revision, freshness, visibility and continuous tracking remain required through release. No firmware or protocol changes.
+
+Current engineering verification: 396 tests passed with zero skips and typecheck passed. Main-app physical gaze accuracy/selection and complete public audible speech/Listening acceptance are pending. Earlier public checkpoint `4db5237` fixed native fetch binding in microphone preflight; Chrome reached its permission prompt but no successful transcription was claimed. Real public Gemini expansion and six-voice metadata were observed. Local acceptance is distinct from public acceptance. Final production build, credential scan and exact deployment verification are recorded in the release report after completion.
+
+The following entries are historical and do not override this checkpoint.
+
 # Current checkpoint — protected public demonstration release
 
 November 15, 2026. The owner authorized publication and deployment to the existing stillmyvoice Vercel project. The public-demo profile includes optional local-inference gaze, packaged pinned assets and license notices, plus server-side Gemini, ElevenLabs and consent-based Listening behind a judge code, signed short-lived cookies, same-origin checks and durable Redis budgets. Actual provider operations additionally require one-use permits bound to the authorized request, cost and deadline. The full local profile and physical-input/speech safeguards remain intact. Production gaze selection remains disabled; experimental physical validation is pending.
