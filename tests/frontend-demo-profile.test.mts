@@ -24,6 +24,16 @@ test('source provenance rejects dirty remote builds, mismatched or malformed rev
   assert.equal(info.publicationVerified, false);
   assert.match(releaseInfoHtml(info), /publication has not been verified/);
 });
+
+test('one public release SHA supports metadata-free builders without bypassing mismatch or dirty checks', () => {
+  const info = releaseProvenance({ releaseRevision: sha, dirty: null, vercel: true });
+  assert.equal(info.revision, sha); assert.equal(info.publicationVerified, false);
+  assert.equal(info.sourceUrl, 'https://github.com/iampenuel/stillmyvoice/tree/' + sha);
+  assert.throws(() => releaseProvenance({ releaseRevision: 'main', dirty: null, vercel: true }), /complete Git SHA/);
+  assert.throws(() => releaseProvenance({ releaseRevision: sha, gitRevision: 'b'.repeat(40), dirty: false, vercel: true }), /revisions differ/);
+  assert.throws(() => releaseProvenance({ releaseRevision: sha, vercelRevision: 'b'.repeat(40), dirty: null, vercel: true }), /revisions differ/);
+  assert.throws(() => releaseProvenance({ releaseRevision: sha, dirty: true, vercel: true }), /working tree is dirty/);
+});
 test('Vercel configuration is static-only, disables automatic deployment, and matches preview security headers', async () => {
   const config = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
   assert.equal(config.framework, 'vite'); assert.equal(config.outputDirectory, 'dist');

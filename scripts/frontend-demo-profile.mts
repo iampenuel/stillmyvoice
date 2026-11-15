@@ -12,13 +12,15 @@ export const frontendDemoHeaders = Object.freeze({
   'X-Frame-Options': 'DENY',
 });
 export type ReleaseProvenance = Readonly<{ revision: string | null; dirty: boolean | null; sourceUrl: string | null; publicationVerified: false }>;
-export function releaseProvenance(input: { gitRevision?: string; vercelRevision?: string; dirty: boolean | null; vercel: boolean }): ReleaseProvenance {
-  for (const revision of [input.gitRevision, input.vercelRevision]) {
+export function releaseProvenance(input: { gitRevision?: string; vercelRevision?: string; releaseRevision?: string; dirty: boolean | null; vercel: boolean }): ReleaseProvenance {
+  const revisions = [input.gitRevision, input.vercelRevision, input.releaseRevision];
+  for (const revision of revisions) {
     if (revision !== undefined && !/^[a-f0-9]{40}$/.test(revision)) throw Error('Release revision must be a complete Git SHA.');
   }
-  if (input.gitRevision && input.vercelRevision && input.gitRevision !== input.vercelRevision) throw Error('Local and Vercel source revisions differ.');
-  const revision = input.vercelRevision ?? input.gitRevision ?? null;
-  if (input.vercel && (!revision || input.dirty === true)) throw Error('Vercel frontend builds require an identified committed source revision.');
+  if (new Set(revisions.filter(revision => revision !== undefined)).size > 1) throw Error('Local and deployment source revisions differ.');
+  const revision = input.vercelRevision ?? input.gitRevision ?? input.releaseRevision ?? null;
+  if (input.vercel && !revision) throw Error('Vercel frontend builds require an identified committed source revision: Git metadata is absent. Set only the approved public SMV_RELEASE_COMMIT_SHA.');
+  if (input.vercel && input.dirty === true) throw Error('Vercel frontend builds require an identified committed source revision: the working tree is dirty.');
   return Object.freeze({ revision, dirty: input.dirty, sourceUrl: revision ? 'https://github.com/iampenuel/stillmyvoice/tree/' + revision : null, publicationVerified: false });
 }
 function provenance(): ReleaseProvenance {
@@ -28,7 +30,10 @@ function provenance(): ReleaseProvenance {
     gitRevision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0;
   } catch { /* Git metadata can be absent in an immutable Vercel Git build. */ }
-  return releaseProvenance({ gitRevision, dirty, vercelRevision: process.env.VERCEL_GIT_COMMIT_SHA || undefined, vercel: process.env.VERCEL === '1' });
+  // This single public SHA can be supplied without exposing Vercel's broader system variables.
+  // It must be updated to the exact approved gitSource SHA for each manual release.
+  return releaseProvenance({ gitRevision, dirty, vercelRevision: process.env.VERCEL_GIT_COMMIT_SHA || undefined,
+    releaseRevision: process.env.SMV_RELEASE_COMMIT_SHA || undefined, vercel: process.env.VERCEL === '1' });
 }
 export function releaseInfoHtml(info: ReleaseProvenance): string {
   const source = info.sourceUrl ? '<a href="' + info.sourceUrl + '">Source at ' + info.revision + '</a>' : 'Source revision is unavailable.';

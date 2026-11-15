@@ -10,6 +10,10 @@ Listening, Gemini, ElevenLabs and gaze are unavailable in this profile. Client c
 
 Web Serial requires a compatible browser and a secure context. A future HTTPS origin needs its own port permission and independent verification of the dedicated Pico CDC2 interface; localhost permission does not establish permission or successful hardware operation on that domain. Firmware, CDC protocol, the accepted input reducer and exact-message speech approval remain unchanged.
 
+## Approved manual release metadata
+
+When Vercel does not provide Git metadata to the build, set the single plain production variable `SMV_RELEASE_COMMIT_SHA` to the exact approved full Git SHA used in the deployment request. This is public source metadata, never an API credential. Update it for each manual release; do not enable broad system-variable exposure for this purpose. If Git or standard Vercel metadata is also available, all supplied revisions must match. Missing/malformed/mismatched revisions and known dirty trees still fail the build. The source link never claims the build independently verified publication.
+
 ## Build and preview mapping
 
 Use the installed Node 24.22.1 / npm 11.19.1 without changing global defaults:
