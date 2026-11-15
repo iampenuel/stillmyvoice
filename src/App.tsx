@@ -274,8 +274,8 @@ export function App() {
           <span className="panel-caption">{model.screen.name === 'review' ? 'Your approval, your words.' : model.screen.name === 'speaking' ? 'Stop speaking cancels playback.' : 'One press and release to choose.'}</span>
         </div>
         <div ref={choiceRegion} className="interaction-scroll" tabIndex={0} aria-label="Communication choices">
-          {model.screen.name === 'paused' && !(scanning || held) ? <div className="notice" role="status"><p>{recovery.guidance}</p>
-            <button type="button" onClick={openSetup}>Open Companion setup</button></div>
+          {model.screen.name === 'paused' && !(scanning || held) ? <div className="recovery-row" role="status"><p>{recovery.guidance}</p>
+            {recovery.setup ? <button type="button" className="compact-control" onClick={openSetup}>Companion setup</button> : null}</div>
             : model.notice && model.screen.name !== 'paused' ? <p className="notice" role="status">{model.notice}</p> : null}
           <div className="choices" data-grid={model.screen.name === 'phrases' || model.screen.name === 'keyboard' || model.screen.name === 'repair'}>
             {sections.primary.map(renderChoice)}

@@ -6,7 +6,8 @@ The accepted SW-01 diagnostic test is inherited baseline evidence, not acceptanc
 
 - [x] Basic phrase route (owner-confirmed November 14, before the latest recovery safeguard): connect while released; Phrases → Comfort → Please reposition me. → Review. Every transition resumes scanning. Composition and entry to Review stay silent. A fresh cycle on Speak produces the exact audible phrase once.
 - [x] Owner-reported edited-message flow before UX-03: physical navigation, review/approval, editing a previous message and audible corrected wording succeeded. Timing and all interruption scenarios were not measured.
-- [ ] UX-03 / SESSION-01 visual and physical repeat: use the [current operator sequence](HP26_UX_03_SESSION_01.md#owner-repeat).
+- [x] SESSION-01 released-switch focus-return repeat: owner confirmed the full c0d4d27 script worked as expected, including draft preservation and exact fresh-authorized speech without manual reconnect. Separate held/background-USB/reload repeats remain unchecked.
+- [ ] Final notice polish and remaining lifecycle repeats: use the [current operator sequence](HP26_UX_03_SESSION_01.md#owner-repeat).
 - [ ] Hold: hold a choice for at least ten seconds. Target stays captured, no repeat action. Release commits once.
 - [ ] Spell: construct a fictional word using row/character scanning, including space, punctuation, backspace, uppercase and Undo. Return without losing wording.
 - [ ] Correct one repeated word occurrence. Applying correction changes only that occurrence. Back discards an uncommitted replacement. Undo restores exact wording, punctuation and whitespace.

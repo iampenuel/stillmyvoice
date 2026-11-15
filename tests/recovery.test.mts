@@ -20,6 +20,10 @@ test('faults remain connection warnings and unarmed recovery never claims switch
   assert.equal(recoveryMessage('Focus lost', false, false).label, 'Communication paused');
   assert.equal(recoveryMessage('Connected', true, false, 'needs-sync').label, 'Release switch to arm');
   assert.notEqual(recoveryMessage('Connected', false, false, 'armed').label, 'Switch ready');
+  assert.equal(recoveryMessage('Focus lost', false, false).setup, false);
+  assert.equal(recoveryMessage('Restoring switch', false, true).setup, false);
+  assert.equal(recoveryMessage('Port lost', false, false).setup, true);
+  assert.equal(recoveryMessage('Device reported fault', false, false).setup, true);
 });
 test('malformed-field diagnostics identify schema shape without echoing arbitrary data', () => {
   const errors: string[] = [];

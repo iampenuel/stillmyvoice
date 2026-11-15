@@ -1,6 +1,6 @@
 # UX-03 / SESSION-01 — workspace and safe continuity
 
-November 14, 2026. Implemented checkpoint; **owner visual review and new physical lifecycle acceptance remain pending**. No firmware, wiring, accepted input reducer, wire protocol, freshness thresholds, cloud permissions or deployment changes.
+November 14, 2026. Implemented checkpoint. **Owner subsequently confirmed the entire released-switch focus-return script worked as expected**, including exact audible speech only after fresh Resume and Speak, with no manual reconnect after return. The consolidated directive accepts the redesign as a strong foundation and requests compact recovery notices. Separate held/background-USB/reload repeats remain pending. No firmware, wiring, accepted input reducer, wire protocol, freshness thresholds, cloud permissions or deployment changes.
 
 ## Evidence and diagnosis
 

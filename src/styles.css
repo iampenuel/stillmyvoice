@@ -49,8 +49,10 @@ h3 { font-size: 20px; font-weight: 600; margin-block: 24px 12px; }
 .target-envelope[data-scan="true"] button:focus-visible { outline: 4px double #1b232b; outline-offset: 4px; }
 .target-envelope[data-held="true"] button { border-color: #153b83; outline-color: #153b83; outline-style: double; outline-width: 4px; background: #dce8ff; }
 .target-envelope[data-held="true"] .scan-label { color: #153b83; font-weight: 600; }
-.notice { padding: 14px; border-left: 3px solid #7b8793; background: #f0f3f6; font-size: calc(16px * var(--text-scale,1)); }
-.notice button { margin-top: 12px; }
+.notice, .recovery-row { flex: 0 0 auto; padding-block: 12px; border-block: 1px solid #dce1e6; font-size: calc(16px * var(--text-scale,1)); color: var(--muted); }
+.recovery-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.recovery-row p { flex: 1 1 14rem; }
+.compact-control { flex: 0 0 auto; min-height: 44px; padding: 8px 12px; font-size: 15px; }
 .correction { border-top: 1px solid #dce1e6; padding-top: 20px; margin-top: 24px; }
 .correction > p + p { margin-top: 12px; }
 .replacement-label { color: var(--muted); font-size: 15px; }
