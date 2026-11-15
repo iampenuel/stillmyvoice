@@ -110,3 +110,9 @@ test('real cookie verification and issued quota receipts reach the existing prov
  assert.equal((await send('/api/transcription',{id:'through-http:3',audioBase64:wav(),mimeType:'audio/wav',durationMs:1,synthetic:true,recordingConsent:true})).status,200);
  assert.equal(wordingCalls,1);assert.equal(speechCalls,1);assert.equal(recordingCalls,1);assert.equal(redisCalls,7);
 });
+
+test('Vercel catch-all routing accepts only its exact path-derived parameter', async () => {
+ const handler=createPublicDemoHandler({});
+ for (const suffix of ['','?route=demo-access']) assert.equal((await handler(new Request(origin+'/api/demo-access'+suffix))).status,200);
+ for (const suffix of ['?route=speech','?route=demo-access&route=demo-access','?text=private','?route=demo-access&text=private']) assert.equal((await handler(new Request(origin+'/api/demo-access'+suffix))).status,400);
+});

@@ -73,7 +73,9 @@ export function createPublicDemoHandler(env: Record<string, string | undefined>,
       signal.throwIfAborted();
       const url = new URL(request.url), origin = request.headers.get('origin');
       if (!origins.has(url.origin) || (request.headers.has('host') && request.headers.get('host') !== url.host)) throw new ProviderError('PUBLIC_HOST_REQUIRED', 403);
-      if (url.search) throw new ProviderError('QUERY_PARAMETERS_NOT_ALLOWED', 400);
+      // Vercel's [...route] adapter appends this exact path-derived routing value.
+      const routingOnly = [...url.searchParams].length === 1 && url.searchParams.get('route') === url.pathname.slice('/api/'.length);
+      if (url.search && !routingOnly) throw new ProviderError('QUERY_PARAMETERS_NOT_ALLOWED', 400);
       if (request.headers.get('sec-fetch-site') === 'cross-site' || (origin !== null && origin !== url.origin)
         || (request.method !== 'GET' && origin !== url.origin)) throw new ProviderError('SAME_ORIGIN_REQUIRED', 403);
       if (!['GET', 'POST', 'DELETE'].includes(request.method)) throw new ProviderError('METHOD_NOT_ALLOWED', 405);
