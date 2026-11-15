@@ -124,3 +124,46 @@ test('reported geometry is copied and detects actual target movement without mod
  assert.equal(d.snapshot().lastGeometry!.regions[0].top,100);
  assert.doesNotMatch(JSON.stringify(report),/rawPoint|landmarks|imageData|boundingBox|yaw|pitch/);
 });
+
+test('horizontal diagnostics separate band mapping from DOM rectangles and worker acceptance',()=>{
+ const d=new GazeDiagnostics();
+ const bands={viewport,classification:'horizontal-bands' as const,regions:[
+  {id:'Left',left:20,top:200,width:450,height:400},{id:'Right',left:550,top:200,width:430,height:400}]};
+ const target={trial:1,promptedRegion:'Right',targetPoint:{x:765,y:400},eligible:true};
+ d.observe(withPoint(750,100),1000,1020,bands,null,target); // Right band, above both DOM boxes.
+ d.observe(withPoint(450,300),1150,1170,bands,null,target); // Inside Left box, central dead zone.
+ const offscreen=withPoint(1050,300);offscreen.point=null;offscreen.diagnostics.reason='prediction-outside-viewport';
+ d.observe(offscreen,1300,1320,bands,null,target);
+ const headRejected=withPoint(250,300);headRejected.point=null;headRejected.diagnostics.reason='head-moved';
+ d.observe(headRejected,1450,1470,bands,null,target);
+ const report=d.snapshot();
+ assert.equal(report.classification,'horizontal-bands');assert.equal(report.geometry!.classification,'horizontal-bands');
+ assert.equal(report.rawMapping.predictions,4);assert.equal(report.rawMapping.mapped,2);
+ assert.deepEqual(report.rawMapping.reasons,{region:2,'central-dead-zone':1,'outside-viewport':1});
+ assert.deepEqual(report.rawMapping.regionCounts,{Right:1,Left:1});
+ assert.equal(report.rawMapping.rectangleComparison.inside,2);assert.equal(report.rawMapping.rectangleComparison.outside,2);
+ assert.equal(report.rawMapping.rectangleComparison.mappedOutsideRectangles,1);
+ assert.equal(report.rawMapping.rectangleComparison.rectangleInsideButUnmapped,1);
+ assert.equal(report.acceptedMapping.predictions,2);assert.equal(report.acceptedMapping.mapped,1);
+ assert.deepEqual(report.acceptedMapping.reasons,{region:1,'central-dead-zone':1});
+ assert.deepEqual(report.acceptedMapping.regionCounts,{Right:1}); // Rejected raw Left never becomes accepted.
+ assert.equal(report.acceptedMapping.rectangleComparison.mappedOutsideRectangles,1);
+ const held=report.heldOutTrials[0];
+ assert.equal(held.classification,'horizontal-bands');assert.equal(held.targetErrorGeometry,'dom-target-center-and-rectangle');
+ assert.equal(held.rawInsidePromptedRegion,1);assert.equal(held.directions.above,1);
+ assert.equal(held.acceptedMapping.predictions,2);
+});
+test('both horizontal central boundaries remain separately diagnosed as uncertain',()=>{
+ const d=new GazeDiagnostics(),bands={...layout,classification:'horizontal-bands' as const};
+ d.observe(withPoint(400,400),1000,1020,bands,null);d.observe(withPoint(600,400),1150,1170,bands,null);
+ const report=d.snapshot();assert.equal(report.rawMapping.reasons['central-dead-zone'],2);
+ assert.equal(report.acceptedMapping.reasons['central-dead-zone'],2);assert.equal(report.acceptedMapping.mapped,0);
+ assert.equal(report.rawMapping.rectangleComparison.inside,2);
+});
+
+test('unobserved diagnostics do not claim a policy and property order is not a geometry change',()=>{
+ const d=new GazeDiagnostics();assert.equal(d.snapshot().classification,null);
+ d.observe(sample(),1000,1020,{classification:'horizontal-bands',...layout},null);
+ d.observe(sample(),1150,1170,{...layout,classification:'horizontal-bands'},null);
+ assert.equal(d.snapshot().geometryChanges,0);assert.equal(d.snapshot().classification,'horizontal-bands');
+});

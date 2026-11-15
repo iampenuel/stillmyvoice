@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GazeStability, GazeTrialRun, balanced30TrialPlan, balancedTrialPlan, regionAtPoint, type GazeLayout, type GazeSample } from '../src/gaze/gaze-logic.mts';
+import { GazeStability, GazeTrialRun, balanced30TrialPlan, balancedTrialPlan, regionAtPoint, classifyGazePoint, type GazeLayout, type GazeSample } from '../src/gaze/gaze-logic.mts';
 
 const viewport = {key:'1000:600:1:1',width:1000,height:600};
 const layout: GazeLayout = {viewport,regions:[{id:'left',left:0,top:0,width:450,height:600},{id:'right',left:550,top:0,width:450,height:600}]};
@@ -336,4 +336,83 @@ test('target-layout drift has its own unscored interruption reason',()=>{
   const interruption=run.interrupt(700,'target-layout-changed');
   assert.equal(interruption?.reason,'target-layout-changed');assert.equal(run.summary().completed,0);
   assert.equal(run.summary().pending,6);assert.equal(run.summary().abstained,0);
+});
+
+
+const horizontal: GazeLayout = {viewport,classification:'horizontal-bands',regions:[
+  {id:'Left',left:30,top:200,width:440,height:240},{id:'Right',left:530,top:200,width:440,height:240},
+]};
+
+test('horizontal bands are explicit, bounded and use a central twenty-percent abstention zone',()=>{
+  for(const [point,region] of [
+    [{x:0,y:0},'Left'],[{x:399.99,y:599.99},'Left'],[{x:600.01,y:0},'Right'],[{x:999.99,y:599.99},'Right'],
+  ] as const) assert.equal(regionAtPoint(point,horizontal),region);
+  for(const x of [400,500,600]) assert.deepEqual(classifyGazePoint({x,y:300},horizontal),{regionId:null,reason:'central-dead-zone'});
+  for(const point of [{x:-0.01,y:300},{x:1000,y:300},{x:200,y:-0.01},{x:800,y:600}]) {
+    assert.deepEqual(classifyGazePoint(point,horizontal),{regionId:null,reason:'outside-viewport'});
+  }
+  for(const point of [{x:NaN,y:300},{x:200,y:Infinity}]) assert.equal(classifyGazePoint(point,horizontal).reason,'invalid-prediction');
+});
+
+test('horizontal policy does not change default rectangle membership or accept arbitrary tile layouts',()=>{
+  const rectangles={...horizontal,classification:undefined};
+  assert.equal(regionAtPoint({x:200,y:100},rectangles),null);
+  assert.equal(regionAtPoint({x:200,y:100},{...horizontal,classification:'rectangles'}),null);
+  assert.equal(regionAtPoint({x:200,y:100},horizontal),'Left');
+  const invalid:GazeLayout[]=[
+    {...horizontal,regions:horizontal.regions.map(r=>({...r,id:r.id.toLowerCase()}))},
+    {...horizontal,regions:[{...horizontal.regions[0],width:600},horizontal.regions[1]]},
+    {...horizontal,regions:[{...horizontal.regions[0],top:-1},horizontal.regions[1]]},
+    {...horizontal,regions:[{...horizontal.regions[0],height:500},horizontal.regions[1]]},
+    {...horizontal,regions:[horizontal.regions[1],{...horizontal.regions[0],id:'Middle'},horizontal.regions[0]]},
+    {...horizontal,classification:'nearest' as GazeLayout['classification']},
+  ];
+  for(const candidate of invalid) {
+    assert.equal(classifyGazePoint({x:200,y:300},candidate).reason,'invalid-layout');
+    const f=new GazeStability();f.enable(viewport);
+    assert.equal(f.observe(sample(0),0,candidate).reason,'invalid-layout');
+  }
+  assert.equal(regionAtPoint({x:200,y:100},{...horizontal,regions:[...horizontal.regions].reverse()}),'Left');
+});
+
+test('changing classification policy invalidates the old fixation before reacquisition',()=>{
+  const f=new GazeStability();f.enable(viewport);
+  const rectangles={...horizontal,classification:undefined};
+  for(let t=0;t<=600;t+=150)f.observe(sample(t),t,rectangles);
+  assert.equal(f.snapshot(600).regionId,'Left');
+  assert.equal(f.observe(sample(750),750,horizontal).reason,'layout-changed');
+  assert.equal(f.observe(sample(700),760,horizontal).reason,'stale');
+  for(let t=900;t<=1500;t+=150)f.observe(sample(t,200,100),t,horizontal);
+  assert.equal(f.snapshot(1500).regionId,'Left');
+  assert.equal(f.observe(sample(1650),1650,rectangles).reason,'layout-changed');
+  assert.equal(f.snapshot(1650).regionId,null);
+});
+
+test('horizontal mapping preserves duration, sample count, two-dimensional dispersion and hysteresis',()=>{
+  const f=new GazeStability();f.enable(viewport);
+  for(let t=0;t<600;t+=150)assert.equal(f.observe(sample(t,200,100),t,horizontal).regionId,null);
+  assert.equal(f.observe(sample(600,200,100),600,horizontal).regionId,'Left');
+  for(let t=750;t<1550;t+=100)assert.equal(f.observe(sample(t,800,100),t,horizontal).regionId,null);
+  assert.equal(f.observe(sample(1550,800,100),1550,horizontal).regionId,'Right');
+  f.reset(1700);
+  for(let t=1700;t<=3200;t+=150)assert.equal(f.observe(sample(t,200,t%300===200?100:400),t,horizontal).regionId,null);
+  assert.equal(f.snapshot(3200).reason,'dispersed'); // Pure vertical spread still rejects.
+  f.reset(3300);
+  for(let t=3300;t<=4800;t+=150)assert.equal(f.observe(sample(t,t%300?350:50,300),t,horizontal).regionId,null);
+  assert.equal(f.snapshot(4800).reason,'dispersed');
+});
+
+test('horizontal central crossings and invalid frames clear acquisition without clamping',()=>{
+  const f=new GazeStability();f.enable(viewport);
+  for(let t=0;t<=600;t+=150)f.observe(sample(t,200,100),t,horizontal);
+  assert.equal(f.snapshot(600).regionId,'Left');
+  const central=f.observe(sample(750,500,100),750,horizontal);
+  assert.equal(central.reason,'central-dead-zone');assert.equal(central.regionId,null);assert.equal(central.sampleCount,0);
+  for(let t=900;t<=1500;t+=150)f.observe(sample(t,200,100),t,horizontal);
+  assert.equal(f.snapshot(1851).reason,'stale');assert.equal(f.snapshot(1851).regionId,null);
+  f.reset(1900);
+  assert.equal(f.observe(sample(1900,200,600),1900,horizontal).reason,'invalid-prediction');
+  assert.equal(f.observe(null,2000,horizontal).reason,'no-prediction');
+  assert.equal(f.observe({...sample(2100,200,100),faceDetected:false},2100,horizontal).reason,'missing-face');
+  assert.equal(f.observe(sample(2200,200,100),2200,{...horizontal,viewport:{...viewport,key:'changed'}}).calibrationRequired,true);
 });

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { regionAtPoint, type GazeLayout, type GazePoint, type GazeSnapshot, type GazeViewport } from './gaze-logic.mts';
+import { classifyGazePoint, type GazeLayout, type GazePoint, type GazeSnapshot, type GazeViewport } from './gaze-logic.mts';
 import type { TrackerSample } from './tracker-adapter.ts';
 
 /** CSS viewport coordinates are unaffected by a resize event with unchanged geometry. */
@@ -49,7 +49,26 @@ class Timing {
   }
 }
 function copyLayout(layout: GazeLayout): GazeLayout {
-  return { viewport:{...layout.viewport}, regions:layout.regions.map(region => ({...region})) };
+  return { viewport:{...layout.viewport}, regions:layout.regions.map(region => ({...region})), ...(layout.classification ? {classification:layout.classification} : {}) };
+}
+/** Compare the active mapping with DOM rectangles using aggregate counters only. */
+class MappingAggregate {
+  private predictions=0; private mapped=0; private reasons:Record<string,number>={}; private regions:Record<string,number>={};
+  private rectangleInside=0; private rectangleRegions:Record<string,number>={}; private mappedOutsideRectangles=0; private rectangleInsideButUnmapped=0;
+  observe(point:GazePoint,layout:GazeLayout) {
+    const active=classifyGazePoint(point,layout), rectangle=classifyGazePoint(point,{...layout,classification:'rectangles'});
+    this.predictions++; countReason(this.reasons,active.reason);
+    if (active.regionId!==null) { this.mapped++; countReason(this.regions,active.regionId); }
+    if (rectangle.regionId!==null) { this.rectangleInside++; countReason(this.rectangleRegions,rectangle.regionId); }
+    if (active.regionId!==null && rectangle.regionId===null) this.mappedOutsideRectangles++;
+    if (active.regionId===null && rectangle.regionId!==null) this.rectangleInsideButUnmapped++;
+    return active.regionId;
+  }
+  snapshot() {
+    return {predictions:this.predictions,mapped:this.mapped,unmapped:this.predictions-this.mapped,reasons:{...this.reasons},regionCounts:{...this.regions},
+      rectangleComparison:{inside:this.rectangleInside,outside:this.predictions-this.rectangleInside,regionCounts:{...this.rectangleRegions},
+        mappedOutsideRectangles:this.mappedOutsideRectangles,rectangleInsideButUnmapped:this.rectangleInsideButUnmapped}};
+  }
 }
 class TargetAggregate {
   private observed = 0; private orientation = 0; private eligible = 0; private faces = 0; private finite = 0; private accepted = 0;
@@ -60,14 +79,16 @@ class TargetAggregate {
   private directions = { inside:0,left:0,right:0,above:0,below:0 };
   private workerReasons:Record<string,number> = {}; private filterReasons:Record<string,number> = {};
   private targetPoint:GazePoint; private targetChanges = 0;
+  private classification:NonNullable<GazeLayout['classification']>='rectangles';
+  private rawMapping=new MappingAggregate(); private acceptedMapping=new MappingAggregate();
   readonly promptedRegion:string;
   constructor(context:GazeDiagnosticContext) { this.promptedRegion=context.promptedRegion; this.targetPoint={...context.targetPoint}; }
   observe(result:TrackerSample, now:number, capturedAt:number, layout:GazeLayout, filtered:GazeSnapshot|null, context:GazeDiagnosticContext) {
-    this.observed++;
+    this.observed++; this.classification=layout.classification??'rectangles';
     if (this.targetPoint.x !== context.targetPoint.x || this.targetPoint.y !== context.targetPoint.y) this.targetChanges++;
     this.targetPoint={...context.targetPoint};
     if (!context.eligible) { this.orientation++; return; }
-    this.eligible++; if (result.face) this.faces++; if (result.point) this.accepted++;
+    this.eligible++; if (result.face) this.faces++; if (result.point) { this.accepted++; this.acceptedMapping.observe(result.point,layout); }
     countReason(this.workerReasons,result.diagnostics.reason); this.arrival.add(now-capturedAt);
     if (filtered) {
       countReason(this.filterReasons,filtered.reason); if (filtered.dispersionPx!==null) this.dispersion.add(filtered.dispersionPx);
@@ -78,7 +99,7 @@ class TargetAggregate {
     const point=result.diagnostics.rawPoint;
     if (!finitePoint(point)) return;
     this.finite++; this.rawX.add(point.x); this.rawY.add(point.y);
-    const region=regionAtPoint(point,layout);
+    const region=this.rawMapping.observe(point,layout);
     if (region === context.promptedRegion) this.rawInside++; else if (region !== null) this.rawOther++; else this.rawOutside++;
     if (!insideViewport(point,layout.viewport)) this.rawOutsideViewport++;
     const dx=point.x-context.targetPoint.x, dy=point.y-context.targetPoint.y;
@@ -93,6 +114,7 @@ class TargetAggregate {
   }
   snapshot() {
     return { promptedRegion:this.promptedRegion, targetPoint:{...this.targetPoint},targetChanges:this.targetChanges,
+      classification:this.classification,targetErrorGeometry:'dom-target-center-and-rectangle' as const,rawMapping:this.rawMapping.snapshot(),acceptedMapping:this.acceptedMapping.snapshot(),
       observedFrames:this.observed,orientationFrames:this.orientation,eligibleFrames:this.eligible,successfulFaceDetections:this.faces,
       finiteRawPredictions:this.finite,acceptedPredictions:this.accepted,rawInsidePromptedRegion:this.rawInside,
       rawInsideOtherRegion:this.rawOther,rawOutsideRegions:this.rawOutside,rawOutsideViewport:this.rawOutsideViewport,
@@ -120,6 +142,7 @@ export class GazeDiagnostics {
   private rawRange:TrackerSample['diagnostics']['rawRange']=null;
   private lastReason='Not started'; private lastPrediction='not-attempted';
   private geometry:GazeLayout|null=null; private lastGeometry:GazeLayout|null=null; private geometryChanges=0;
+  private rawMapping=new MappingAggregate(); private acceptedMapping=new MappingAggregate();
   private targets=new Map<string,TargetAggregate>(); private trials=new Map<number,TargetAggregate>();
   observe(result:TrackerSample,capturedAt:number,now:number,layout:GazeLayout,filtered:GazeSnapshot|null,context?:GazeDiagnosticContext) {
     this.frames++; if (result.face) this.faces++;
@@ -127,15 +150,16 @@ export class GazeDiagnostics {
     this.inference.add(result.inferenceMs); this.detect.add(d.detectMs); this.predict.add(d.predictMs); this.arrivals.add(now-capturedAt);
     if (this.lastCaptureAt !== null && capturedAt > this.lastCaptureAt) this.captureIntervals.add(capturedAt-this.lastCaptureAt);
     this.lastCaptureAt=capturedAt;
-    this.geometry??=copyLayout(layout);
-    if (this.lastGeometry && JSON.stringify(this.lastGeometry)!==JSON.stringify(layout)) this.geometryChanges++;
-    this.lastGeometry=copyLayout(layout);
+    const nextGeometry=copyLayout(layout);
+    this.geometry??=nextGeometry;
+    if (this.lastGeometry && JSON.stringify(this.lastGeometry)!==JSON.stringify(nextGeometry)) this.geometryChanges++;
+    this.lastGeometry=nextGeometry;
     this.lastReason=d.reason; this.lastPrediction=d.predictionOutcome; countReason(this.reasons,d.reason);
     this.frame=d.frame.width+' × '+d.frame.height;
     this.calibrationFrame=d.calibrationFrame?d.calibrationFrame.width+' × '+d.calibrationFrame.height:'—';
     this.calibrationViewport=d.calibrationViewport?d.calibrationViewport.width+' × '+d.calibrationViewport.height:'—';
     this.calibrationSamples=d.calibrationSamples; this.samplesPerPoint=[...d.samplesPerPoint]; this.calibrationStatus=result.calibrated;
-    this.rawRegion=finitePoint(d.rawPoint)?regionAtPoint(d.rawPoint,layout):null;
+    this.rawRegion=d.rawPoint?this.rawMapping.observe(d.rawPoint,layout):null;
     if (finitePoint(d.rawPoint)) {
       this.rawFinite++; this.rawX.add(d.rawPoint.x); this.rawY.add(d.rawPoint.y);
       if (this.lastPredictionAt!==null && capturedAt>this.lastPredictionAt) this.predictionIntervals.add(capturedAt-this.lastPredictionAt);
@@ -156,7 +180,7 @@ export class GazeDiagnostics {
     // Count a prediction once on arrival, never once per UI freshness poll.
     if (filtered?.reason==='stale' && result.point && now>=capturedAt) this.stale++;
     if (result.point && filtered && ['collecting','oscillating','dispersed'].includes(filtered.reason)) this.unstable++;
-    if (result.point) this.accepted++;
+    if (result.point) { this.accepted++; this.acceptedMapping.observe(result.point,layout); }
     if (context && Number.isInteger(context.trial) && context.trial>0 && context.trial<=30 && finitePoint(context.targetPoint)) {
       if (!this.targets.has(context.promptedRegion) && this.targets.size<3) this.targets.set(context.promptedRegion,new TargetAggregate(context));
       if (!this.trials.has(context.trial)) this.trials.set(context.trial,new TargetAggregate(context));
@@ -173,6 +197,7 @@ export class GazeDiagnostics {
   snapshot() {
     const inference=this.inference.snapshot(), predictionInterval=this.predictionIntervals.snapshot();
     return Object.freeze({validCameraFrames:this.frames,successfulFaceDetections:this.faces,
+      classification:this.lastGeometry?(this.lastGeometry.classification??'rectangles'):null,rawMapping:this.rawMapping.snapshot(),acceptedMapping:this.acceptedMapping.snapshot(),
       finiteRawPredictions:this.rawFinite,inViewportRawPredictions:this.rawInViewport,acceptedPredictions:this.accepted,
       predictionsRejectedStale:this.stale,predictionsNotYetStable:this.unstable,predictionsOutsideRegions:this.outside,
       medianPredictionIntervalMs:predictionInterval.median,medianInferenceMs:inference.median,rawRegion:this.rawRegion,

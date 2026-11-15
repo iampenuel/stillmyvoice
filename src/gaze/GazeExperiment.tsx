@@ -50,6 +50,8 @@ export function GazeExperiment() {
     const b=ref.current?.getBoundingClientRect();
     return {id:i===0?'Left':'Right',left:b?.left??0,top:b?.top??0,width:b?.width??0,height:b?.height??0};
   });
+  // Only this isolated route opts into horizontal bands; DOM boxes remain fixation targets.
+  const diagnosticLayout = (currentViewport=viewport()):GazeLayout => ({viewport:currentViewport,regions:regions(),classification:'horizontal-bands'});
   const geometry = ():Geometry => ({innerWidth,innerHeight,outerWidth,outerHeight,pixelRatio:devicePixelRatio,
     visual:{width:visualViewport?.width??innerWidth,height:visualViewport?.height??innerHeight,scale:visualViewport?.scale??1,offsetLeft:visualViewport?.offsetLeft??0,offsetTop:visualViewport?.offsetTop??0},
     screen:{width:screen.width,height:screen.height,availableWidth:screen.availWidth,availableHeight:screen.availHeight},fullscreen:!!document.fullscreenElement,
@@ -93,9 +95,9 @@ export function GazeExperiment() {
       if(document.visibilityState!=='visible'){stop('Camera stopped because this page is hidden.','page-hidden');return;}
       if(checkGeometry('prediction-completed'))return;
       r.face=result.face;advanceTrial(performance.now());
-      if(result.requiresCalibration){r.diagnostics.observe(result,capturedAt,performance.now(),{viewport:currentViewport,regions:regions()},null);stop('Camera frame dimensions changed. Start again and recalibrate.');return;}
+      if(result.requiresCalibration){r.diagnostics.observe(result,capturedAt,performance.now(),diagnosticLayout(currentViewport),null);stop('Camera frame dimensions changed. Start again and recalibrate.');return;}
       if(calibration){
-        r.diagnostics.observe(result,capturedAt,performance.now(),{viewport:currentViewport,regions:regions()},null);
+        r.diagnostics.observe(result,capturedAt,performance.now(),diagnosticLayout(currentViewport),null);
         if(calibration.phase==='collecting'){
           if(target && result.stored>calibration.accepted){
             calibration.accepted=result.stored;update({captured:result.stored});
@@ -116,7 +118,7 @@ export function GazeExperiment() {
             detail:result.face?'Look at the point. Timed capture checks face presence, not whether you are fixating.':'Face not detected. The current point will wait; reposition or stop and retry.'});
         }
       } else if(r.calibrated){
-        const now=performance.now(), layout=r.measurementLayout&&r.run?r.measurementLayout:{viewport:currentViewport,regions:regions()};advanceTrial(now);
+        const now=performance.now(), layout=r.measurementLayout&&r.run?r.measurementLayout:diagnosticLayout(currentViewport);advanceTrial(now);
         let snapshot=r.filter.snapshot(now);
         const afterOrientation=!r.run||(r.trialSettled&&capturedAt>=r.trialStarted+SETTLE_MS);
         if(afterOrientation) {
@@ -135,7 +137,7 @@ export function GazeExperiment() {
             detail:r.run?'Look at the prompted region. Gaze does not select anything.':
               !result.face?'No face detected. No region is proposed.':result.headMoved?'Head position changed. No region is proposed.':'Region proposals use freshness and stability heuristics, not a confidence percentage.'});
         }
-      }else {r.diagnostics.observe(result,capturedAt,performance.now(),{viewport:currentViewport,regions:regions()},null);update({face:result.face,diagnostics:r.diagnostics.snapshot(),status:result.face?'Ready to calibrate':'Finding face',
+      }else {r.diagnostics.observe(result,capturedAt,performance.now(),diagnosticLayout(currentViewport),null);update({face:result.face,diagnostics:r.diagnostics.snapshot(),status:result.face?'Ready to calibrate':'Finding face',
         detail:result.face?'Sit comfortably, keep your head steady, then start the timed 17-point calibration.':'Face not detected yet. Face the built-in camera in steady light.'});}
     }catch{
       if(generation===r.generation)fail('The local gaze tracker failed or timed out. Camera stopped; switch-only SMV is unchanged.');
@@ -228,7 +230,7 @@ export function GazeExperiment() {
     if(boxes.some(box=>box.left<0||box.top<0||box.left+box.width>innerWidth||box.top+box.height>innerHeight)){
       update({detail:'Keep both test cards fully visible before starting. Resize before camera activation, then recalibrate.'});return;
     }
-    setPreview(false);r.measurementLayout={viewport:viewport(),regions:regions()};r.geometry.observe('trial-start',geometry(),performance.now());r.filter.reset(performance.now());r.run=new GazeTrialRun(['Left','Right'],Math.random,count);r.diagnostics=new GazeDiagnostics();r.diagnostics.recordReset('trial-start');
+    setPreview(false);r.measurementLayout=diagnosticLayout();r.geometry.observe('trial-start',geometry(),performance.now());r.filter.reset(performance.now());r.run=new GazeTrialRun(['Left','Right'],Math.random,count);r.diagnostics=new GazeDiagnostics();r.diagnostics.recordReset('trial-start');
     const first=r.run.begin(performance.now());r.trialStarted=first.startedAt;r.trialSettled=false;
     update({measurementLayout:r.measurementLayout,interruption:null,denominator:count,trial:first.trial,prompted:first.promptedRegion,results:[],resultDiagnostics:null,resultFit:null,resultGeometry:null,diagnostics:r.diagnostics.snapshot(),detail:'Look at the requested region. All '+count+' trials count, including abstentions.'});
   }
@@ -259,10 +261,10 @@ export function GazeExperiment() {
       <p className="gaze-geometry-status">{preview?'Hide the preview before starting trials. ':''}Geometry: {view.geometryReady?'settled for 2 seconds':'waiting to settle'}. Keep browser controls, zoom and window size unchanged.</p>
       <dl className="gaze-readouts"><div><dt>Camera</dt><dd>{view.camera}</dd></div><div><dt>Inference</dt><dd>{view.delegate}</dd></div>
         <div><dt>Stable region</dt><dd>{view.snapshot?.regionId??'None'}</dd></div><div><dt>Sample age</dt><dd>{view.snapshot?.ageMs==null?'—':Math.round(view.snapshot.ageMs)+' ms'}</dd></div>
-        <div><dt>Dispersion</dt><dd>{view.snapshot?.dispersionPx==null?'—':Math.round(view.snapshot.dispersionPx)+' px'}</dd></div></dl>
+        <div><dt>2D dispersion</dt><dd>{view.snapshot?.dispersionPx==null?'—':Math.round(view.snapshot.dispersionPx)+' px'}</dd></div></dl>
     </section>
-    <div className="gaze-trial-prompt" aria-live="polite">{view.prompted?'Trial '+view.trial+' of '+view.denominator+' — Look '+view.prompted.toLowerCase():'Two broad test regions. No scanner integration is active.'}</div>
-    <div className="gaze-estimates"><span>Raw region: <strong>{active?d.rawRegion??'None':'None'}</strong></span>
+    <div className="gaze-trial-prompt" aria-live="polite">{view.prompted?'Trial '+view.trial+' of '+view.denominator+' — Look '+view.prompted.toLowerCase():'Horizontal regions · center 20% uncertain. No scanner integration.'}</div>
+    <div className="gaze-estimates"><span>Raw horizontal region: <strong>{active?d.rawRegion??'None':'None'}</strong></span>
       <span>Stabilized region: <strong>{view.snapshot?.regionId??'None'}</strong></span><span>Filter: {view.snapshot?.reason??'Disabled'}</span></div>
     <div className="gaze-test-regions">
       <div ref={left} className="gaze-test-region" data-prompted={view.prompted==='Left'}><span>Left</span>{view.prompted==='Left'?<span className="gaze-fixation-static" aria-hidden="true"/>:null}</div>
@@ -286,7 +288,7 @@ export function GazeExperiment() {
       <p>Last frame: {d.lastReason}. Prediction: {d.lastPrediction}. Calibration viewport: {d.calibrationViewport} CSS px. Current viewport: {innerWidth} × {innerHeight}; pixel ratio: {devicePixelRatio}; zoom scale: {visualViewport?.scale??1}.
         {view.viewportChange?' Geometry changed: '+view.viewportChange+'.':''}</p>
       <details><summary>Diagnostic counters — no images</summary><pre>{JSON.stringify({counters:d,calibrationFit:view.calibrationFit},null,2)}</pre></details>
-      <p>Counts reset at Start and at each trial run. “Tracking loss” includes stale or rejected estimates; it is not a face-loss count.</p>
+      <p>Left requires x below 40% of viewport width; Right requires x above 60%. Center and off-screen estimates abstain. Rectangles are fixation targets, not acceptance bounds. Counts reset at Start and each trial run; tracking-loss events are not face-loss counts.</p>
     </section>
     <div className="gaze-camera-preview"><button onClick={()=>setPreview(p=>!p)} disabled={!active||!!view.prompted}>{preview?'Hide camera preview':'Show camera preview'}</button>
       <video ref={video} muted autoPlay playsInline hidden={!preview} aria-label="Local camera preview"/></div>

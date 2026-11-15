@@ -2,10 +2,11 @@
 export type GazePoint = Readonly<{ x: number; y: number }>;
 export type GazeViewport = Readonly<{ key: string; width: number; height: number }>;
 export type GazeRegion = Readonly<{ id: string; left: number; top: number; width: number; height: number }>;
-export type GazeLayout = Readonly<{ viewport: GazeViewport; regions: readonly GazeRegion[] }>;
+export type GazeClassification = 'rectangles' | 'horizontal-bands';
+export type GazeLayout = Readonly<{ viewport: GazeViewport; regions: readonly GazeRegion[]; classification?: GazeClassification }>;
 export type GazeSample = Readonly<GazePoint & { capturedAt: number; faceDetected: boolean }>;
 export type GazeStatus = 'disabled' | 'uncertain' | 'tracking' | 'lost' | 'calibration-required';
-export type GazeReason = 'disabled' | 'collecting' | 'stable' | 'no-prediction' | 'missing-face' | 'stale' | 'invalid-prediction' | 'outside-regions' | 'oscillating' | 'dispersed' | 'layout-changed' | 'viewport-changed' | 'invalid-layout' | 'non-monotonic';
+export type GazeReason = 'disabled' | 'collecting' | 'stable' | 'no-prediction' | 'missing-face' | 'stale' | 'invalid-prediction' | 'outside-regions' | 'central-dead-zone' | 'oscillating' | 'dispersed' | 'layout-changed' | 'viewport-changed' | 'invalid-layout' | 'non-monotonic';
 export type GazeSnapshot = Readonly<{
   status: GazeStatus; reason: GazeReason; regionId: string | null; point: GazePoint | null;
   sampleCount: number; dispersionPx: number | null; ageMs: number | null; sampleAtMs: number | null; validUntilMs: number | null;
@@ -30,12 +31,36 @@ function regionsValid(regions: readonly GazeRegion[]): boolean {
     && regions.every(r => typeof r.id === 'string' && r.id.trim().length > 0 && r.id.length <= 64
       && [r.left,r.top,r.width,r.height].every(finite) && r.width > 0 && r.height > 0);
 }
-/** Overlapping rectangles abstain; a point on a shared edge belongs to only one side. */
-export function regionAtPoint(point: GazePoint, layout: GazeLayout): string | null {
-  if (!viewportValid(layout.viewport) || !regionsValid(layout.regions) || !finite(point.x) || !finite(point.y)
-    || point.x < 0 || point.y < 0 || point.x >= layout.viewport.width || point.y >= layout.viewport.height) return null;
+function classificationValid(layout: GazeLayout): boolean {
+  if (!regionsValid(layout.regions)) return false;
+  if (layout.classification === undefined || layout.classification === 'rectangles') return true;
+  if (layout.classification !== 'horizontal-bands' || layout.regions.length !== 2) return false;
+  const left = layout.regions.find(r => r.id === 'Left'), right = layout.regions.find(r => r.id === 'Right');
+  return !!left && !!right && left.left+left.width <= right.left
+    && layout.regions.every(r => r.left >= 0 && r.top >= 0 && r.left+r.width <= layout.viewport.width && r.top+r.height <= layout.viewport.height);
+}
+export type GazePointClassification = Readonly<{
+  regionId: string | null;
+  reason: 'region' | 'invalid-layout' | 'invalid-prediction' | 'outside-viewport' | 'outside-regions' | 'central-dead-zone';
+}>;
+/** The opt-in horizontal diagnostic uses viewport bands, not nearest-card assignment.
+ * Both coordinates must remain in the viewport; the central 20%, including its edges,
+ * abstains. The supplied real DOM boxes remain available for target geometry evidence. */
+export function classifyGazePoint(point: GazePoint, layout: GazeLayout): GazePointClassification {
+  if (!viewportValid(layout.viewport) || !classificationValid(layout)) return {regionId:null,reason:'invalid-layout'};
+  if (!finite(point.x) || !finite(point.y)) return {regionId:null,reason:'invalid-prediction'};
+  if (point.x < 0 || point.y < 0 || point.x >= layout.viewport.width || point.y >= layout.viewport.height) return {regionId:null,reason:'outside-viewport'};
+  if (layout.classification === 'horizontal-bands') {
+    if (point.x < layout.viewport.width*0.4) return {regionId:'Left',reason:'region'};
+    if (point.x > layout.viewport.width*0.6) return {regionId:'Right',reason:'region'};
+    return {regionId:null,reason:'central-dead-zone'};
+  }
+  // Overlapping rectangles abstain; a shared edge belongs to only one side.
   const matches = layout.regions.filter(r => point.x >= r.left && point.x < r.left+r.width && point.y >= r.top && point.y < r.top+r.height);
-  return matches.length === 1 ? matches[0].id : null;
+  return matches.length === 1 ? {regionId:matches[0].id,reason:'region'} : {regionId:null,reason:'outside-regions'};
+}
+export function regionAtPoint(point: GazePoint, layout: GazeLayout): string | null {
+  return classifyGazePoint(point,layout).regionId;
 }
 function configFor(options: Partial<GazeStabilityConfig>): GazeStabilityConfig {
   const c = { ...defaultGazeStability, ...options };
@@ -98,8 +123,8 @@ export class GazeStability {
     }
     // A changed viewport remains invalid even if it later returns to the old size.
     if (this.calibrationRequired) return this.snapshot(now);
-    if (!regionsValid(layout.regions)) { this.clear('uncertain','invalid-layout'); return this.snapshot(now); }
-    const layoutKey = JSON.stringify(layout.regions);
+    if (!classificationValid(layout)) { this.clear('uncertain','invalid-layout'); return this.snapshot(now); }
+    const layoutKey = JSON.stringify({classification:layout.classification ?? 'rectangles',regions:layout.regions});
     if (this.layoutKey !== null && this.layoutKey !== layoutKey) {
       this.layoutKey = layoutKey; this.layoutChangedAt = now;
       this.clear('uncertain','layout-changed'); return this.snapshot(now);
@@ -120,8 +145,8 @@ export class GazeStability {
     this.lastObservationAt = sample.capturedAt;
     if (this.lastValidAt !== null && sample.capturedAt-this.lastValidAt > this.config.staleMs) this.clear('uncertain','collecting');
     this.lastValidAt = sample.capturedAt;
-    const region = regionAtPoint(sample,layout);
-    if (!region) { this.clear('uncertain','outside-regions'); return this.snapshot(now); }
+    const classified = classifyGazePoint(sample,layout), region = classified.regionId;
+    if (!region) { this.clear('uncertain',classified.reason === 'central-dead-zone' ? 'central-dead-zone' : 'outside-regions'); return this.snapshot(now); }
     const changed = this.candidate !== null && this.candidate !== region;
     if (this.candidate !== region) {
       this.clear('uncertain',changed ? 'oscillating' : 'collecting',false);
