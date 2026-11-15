@@ -7,7 +7,7 @@ export const contextOptions = [
   { id: 'education_work', name: 'Education & Work', description: 'Learning, meetings, and self-expression' },
 ] as const;
 export type CommunicationContext = typeof contextOptions[number]['id'];
-export type ExpansionRequest = Readonly<{ id: string; text: string; context: CommunicationContext; clarification: string; synthetic: true }>;
+export type ExpansionRequest = Readonly<{ id: string; text: string; context: CommunicationContext; clarification: string; transcript?: string; synthetic: true }>;
 export type ExpansionResult = Readonly<{
   status: 'candidate' | 'clarify' | 'insufficient_input';
   candidate: string; unresolvedCues: string[]; clarificationQuestion: string; clarificationChoices: string[];

@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ProviderError, type createElevenLabs } from './elevenlabs.mts';
 import type { createGemini } from './gemini.mts';
+import type { createScribe } from './scribe.mts';
 type Eleven = ReturnType<typeof createElevenLabs>;
 type Gemini = ReturnType<typeof createGemini>;
 const origins = new Set(['http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:4173', 'http://localhost:4173']);
@@ -10,7 +11,7 @@ function send(res: ServerResponse, code: number, body: unknown) {
   res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(JSON.stringify(body));
 }
-async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function body(req: IncomingMessage, limit=32_768): Promise<Record<string, unknown>> {
   if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] ?? '')) throw new ProviderError('JSON_REQUIRED', 415);
   const text = await new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = []; let size = 0;
@@ -18,7 +19,7 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
     const error = () => { cleanup(); reject(new ProviderError('INVALID_REQUEST', 400)); };
     const data = (chunk: Buffer) => {
       size += chunk.length;
-      if (size > 32_768) { cleanup(); req.resume(); reject(new ProviderError('REQUEST_TOO_LARGE', 413)); }
+      if (size > limit) { cleanup(); req.resume(); reject(new ProviderError('REQUEST_TOO_LARGE', 413)); }
       else chunks.push(chunk);
     };
     const end = () => { cleanup(); resolve(Buffer.concat(chunks).toString('utf8')); };
@@ -31,11 +32,11 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
   } catch { throw new ProviderError('INVALID_JSON', 400); }
 }
 /** Loopback development API. No CORS, arbitrary upstream URLs, public binding or content logs. */
-export function createApiHandler(eleven: Eleven, gemini: Gemini) {
+export function createApiHandler(eleven: Eleven, gemini: Gemini, scribe?: ReturnType<typeof createScribe>) {
   let minute = Date.now(), requests = 0;
   return async (req: IncomingMessage, res: ServerResponse) => {
     if (!hosts.has(req.headers.host ?? '')) { send(res, 403, { error: 'LOCAL_HOST_REQUIRED' }); return; }
-    if (req.method === 'GET' && req.url === '/api/status') { send(res, 200, { elevenlabs: eleven.status(), gemini: gemini.status() }); return; }
+    if (req.method === 'GET' && req.url === '/api/status') { send(res, 200, { elevenlabs: eleven.status(), gemini: gemini.status(), scribe: scribe?.status() ?? { available:false,model:'scribe_v3' } }); return; }
     if (req.method !== 'POST') { send(res, 405, { error: 'METHOD_NOT_ALLOWED' }); return; }
     if (!origins.has(req.headers.origin ?? '') || req.headers['sec-fetch-site'] === 'cross-site') { send(res, 403, { error: 'SAME_ORIGIN_REQUIRED' }); return; }
     if (Date.now() - minute >= 60_000) { minute = Date.now(); requests = 0; }
@@ -45,7 +46,7 @@ export function createApiHandler(eleven: Eleven, gemini: Gemini) {
     res.once('close', disconnected); req.once('aborted', disconnected);
     const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(15_000)]);
     try {
-      const payload = await body(req);
+      const payload = await body(req,req.url==='/api/transcription'?1_500_000:32_768);
       if (req.url === '/api/voices') {
         if (Object.keys(payload).length !== 0) throw new ProviderError('INVALID_REQUEST', 422);
         send(res, 200, { voices: await eleven.listVoices(signal) });
@@ -54,6 +55,9 @@ export function createApiHandler(eleven: Eleven, gemini: Gemini) {
         const audio = await eleven.synthesize(payload.authorization, signal);
         signal.throwIfAborted();
         if (!res.destroyed) { res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(audio); }
+      } else if (req.url === '/api/transcription') {
+        if(!scribe) throw new ProviderError('SCRIBE_DISABLED',403);
+        send(res,200,await scribe.transcribe(payload,signal));
       } else if (req.url === '/api/expansion') {
         send(res, 200, await gemini.expand(payload, signal));
       } else if (req.url === '/api/suggestions') {

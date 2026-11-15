@@ -4,6 +4,8 @@
 
 ## Current status
 
+ACCESS-02 adds an experimental all-letter row-column keyboard with grouped fallback and optional consent-based, bounded Scribe v3 Listening. Transcripts are reviewed as context, never inserted as authored words. The owner confirmed the preceding LaSean/intent physical repeat; microphone and new keyboard acceptance remain pending. [Current verification and physical script](docs/HP26_ACCESS_02.md).
+
 The React + TypeScript + Vite workspace implements phrase categories, grouped spelling, occurrence-specific correction, Undo, deliberate clear, Pause/Resume, complete exact-text review, browser voice settings, fixed-sample preview, and stationary Stop. Drafts and authorizations stay in tab memory; reloading clears them.
 
 The approved Pico v2 firmware and dedicated CDC2 input passed SW-01 diagnostic acceptance. The owner subsequently confirmed physical navigation, silent review, separate approval, audible exact speech and editing with corrected-wording playback. The historical combined transport-fault reason remains unproven; targeted cleanup and diagnostic fixes remain in place. See [communication evidence](docs/HP26_SW_02A.md).
@@ -48,4 +50,4 @@ The official event requires a public code repository and accurate attribution. T
 - [Branding boundaries](docs/BRANDING.md): `stillmyvoice.club`, registered according to the owner, deployment unconfirmed; no production domain is configured.
 - [Third-party notices](THIRD_PARTY_NOTICES.md) and [local instruction registry](docs/SKILLS_REGISTRY.md)
 
-This prototype has no clinical validation or accessibility-conformance claim. It is not deployed or submitted. Optional transcription and gaze are deferred; new intent/LaSean physical acceptance and publication of the latest checkpoint remain unfinished. A successful build or synthetic test is not evidence of real physical or audible success.
+This prototype has no clinical validation or accessibility-conformance claim. It is not deployed or submitted. Optional Listening is implemented pending physical acceptance; gaze remains deferred; new intent/LaSean physical acceptance and publication of the latest checkpoint remain unfinished. A successful build or synthetic test is not evidence of real physical or audible success.

@@ -100,7 +100,7 @@ export function createGemini(env: Record<string, string | undefined>, generate: 
         const clarification = knownAmbiguity(request);
         if (clarification) return clarification;
         const text = await generate({ model: GEMINI_MODEL, schema: expansionSchema, instruction: expansionInstruction,
-          contents: JSON.stringify({ exactKeywords: request.text, optionalContext: request.context, explicitClarification: request.clarification }),
+          contents: JSON.stringify({ exactKeywords: request.text, optionalContext: request.context, explicitClarification: request.clarification, ...(request.transcript ? { reviewedTranscript: request.transcript } : {}) }),
         }, bounded);
         bounded.throwIfAborted();
         if (text.length > 4096) throw new ProviderError('INVALID_EXPANSION', 502);

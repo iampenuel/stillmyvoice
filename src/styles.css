@@ -110,3 +110,11 @@ main[data-large-text="true"] .navigation-choices { grid-template-columns: minmax
   .target-envelope[data-scan="true"] button { outline-color: Highlight; border-color: Highlight; }
   .target-envelope[data-held="true"] button { outline-style: double; }
 }
+
+.alphabet-surface { display: grid; gap: 8px; flex: 0 0 auto; }
+.alphabet-cells { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); width: 100%; gap: 6px; align-items: center; text-align: center; }
+.alphabet-row .target-envelope button { min-height: 46px; padding: 4px; justify-content: center; align-items: center; font-size: calc(21px * var(--text-scale,1)); }
+.alphabet-row > .target-envelope > button { padding-inline: 4px; }
+.alphabet-inactive { display: grid; align-items: center; min-height: 46px; font-size: calc(21px * var(--text-scale,1)); color: #56616c; }
+main:not([data-large-text="true"]) [data-keyboard-overview="true"] .alphabet-row .target-envelope button { min-height: 46px; padding: 4px; }
+@media (max-width: 40rem) { .alphabet-cells { gap: 4px; } .alphabet-row .target-envelope button { min-height: 48px; } }

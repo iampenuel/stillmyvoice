@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, withCloudDefaults, speechEvent, title, candidateVoice, type Model, type Choice } from './communication/model.mts';
+import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, withCloudDefaults, speechEvent, title, candidateVoice, alphabetRows, type Model, type Choice } from './communication/model.mts';
 import { InputCoordinator } from './communication/input-coordinator.mts';
 import { browserSpeechEngine, routeSpeechEngine, SpeechController } from './communication/speech.mts';
 import { measureReviewPages } from './communication/review-layout.mts';
 import { recoveryMessage } from './communication/recovery.mts';
+import { ListeningRuntime } from './communication/ListeningRuntime';
 import { CloudRuntime } from './communication/CloudRuntime';
 import { browserPremiumSpeechEngine } from './communication/premium-speech.mts';
 import { ChoiceButton } from './communication/ChoiceButton';
@@ -85,7 +86,7 @@ export function App() {
     const blur = () => {
       // The native permission picker can temporarily blur before port opening.
       // The accepted adapter guards opening and every post-open focus loss.
-      if (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request || current.current.expansion.request) controller.suspend('Focus lost — communication preserved');
+      if (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request || current.current.expansion.request || current.current.listen.session) controller.suspend('Focus lost — communication preserved');
     };
     const focus = () => { if (active() && !setup.current?.open) void controller.foreground(); };
     const visibility = () => { if (document.visibilityState !== 'visible') controller.suspend('Page hidden — communication preserved'); else focus(); };
@@ -110,7 +111,7 @@ export function App() {
       }
       // Some browser-chrome transitions do not deliver a window blur. This also
       // covers companion-approved pending/playing speech without a serial poll.
-      if (!(focused && visible) && (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request || current.current.expansion.request)) controller.suspend('Inactive page — communication preserved');
+      if (!(focused && visible) && (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request || current.current.expansion.request || current.current.listen.session)) controller.suspend('Inactive page — communication preserved');
     };
     const activityTimer = setInterval(checkActivity, 25); checkActivity();
     window.addEventListener('blur', blur); window.addEventListener('focus', focus); window.addEventListener('resize', resize); window.addEventListener('pagehide', unload);
@@ -220,6 +221,7 @@ export function App() {
   const displayed = (model.screen.name === 'review' || model.screen.name === 'reader') && model.review
     ? model.review.pages[model.screen.page ?? 0] : model.draft;
   const sections = choiceSections(model);
+  const alphabet = model.alphabetMode === 'visible' && model.screen.name === 'keyboard' && (model.screen.value === 'rows' || alphabetRows.some(row => row === model.screen.value));
   const voiceCandidate = candidateVoice(model);
   const playbackStatus = model.speechPreview ? ({ Preparing: 'Preparing voice preview', Speaking: 'Playing voice preview',
     Stopped: 'Voice preview stopped', 'Playback finished': 'Voice preview finished', 'Speech failed': 'Voice preview failed' } as Record<string, string>)[model.speech] ?? model.speech : model.speech;
@@ -250,6 +252,7 @@ export function App() {
     onKeyDownCapture={event => {
       if (event.key === 'Tab' && coordinator.current?.mode !== 'none') coordinator.current?.stop('Keyboard navigation — scan paused');
     }}>
+    <ListeningRuntime model={model} current={current} commit={commit} canUpdate={() => coordinator.current?.state.phase !== 'held' && !coordinator.current?.busy && !current.current.authorization} />
     <CloudRuntime model={model} current={current} commit={commit} canUpdate={() => coordinator.current?.state.phase !== 'held' && !coordinator.current?.busy && !current.current.authorization} />
     <header className="masthead"><div className="wordmark" aria-label="SMV — Still My Voice">SMV</div>
       <div><p className="product-name">Still My Voice</p><p className="tagline">Communication, on your terms.</p></div>
@@ -287,12 +290,28 @@ export function App() {
             {recovery.setup ? <button type="button" className="compact-control" onClick={openSetup}>Companion setup</button> : null}</div>
             : model.notice && model.screen.name !== 'paused' ? <p className="notice" role="status">{model.notice}</p> : null}
           {model.screen.name === 'assist' ? <p className="notice">{!model.cloud.consent ? 'Fictional demo only. A companion can enable cloud use in setup.' : !model.cloud.gemini ? model.cloud.geminiReason : 'Optional Gemini suggestions. Nothing changes until you choose.'}</p> : null}
+          {model.screen.name === 'neutral-replies' ? <p className="notice">Fixed replies. No answer has been inferred from the conversation.</p> : null}
           {model.screen.name === 'expansion' ? <div className="notice" role="status">{model.expansion.state === 'loading' ? 'Expanding your words… Your original words are kept.' : model.expansion.error || (model.expansion.result?.status === 'candidate' ? <><p>Proposed wording · Check the meaning</p><p className="exact">{model.expansion.result.candidate}</p></> : model.expansion.result?.status === 'clarify' ? model.expansion.result.clarificationQuestion : 'Please add a few more words or keep your wording.')}</div> : null}
           {model.screen.name === 'suggestions' ? <p className="notice" role="status">{model.assistance.state === 'loading' ? 'Preparing suggestions… Your words are kept.' : model.assistance.error || (model.assistance.items.length ? 'Suggestions may be wrong. Choose only wording you intend.' : 'No reliable suggestions. Continue with your own wording.')}</p> : null}
           {model.screen.name === 'speech-error' ? <p className="notice" role="status">Speech could not finish. Your message is kept.</p> : null}
           {voiceCandidate && (!voiceCandidate.available || !model.cloud.consent || !model.cloud.elevenlabs) ? <p className="notice" role="status">{!voiceCandidate.available ? voiceCandidate.reason : !model.cloud.consent ? 'Enable fictional cloud demo in Companion setup to preview or use this voice.' : model.cloud.elevenReason}</p> : null}
+          {model.screen.name === 'listening' ? <div className="notice" role="status">{!model.cloud.consent ? 'Enable fictional cloud demo in Companion setup. ' : null}{model.listen.phase === 'consent' ? 'Fictional conversation only. Ask the speaker to agree. Audio is sent to ElevenLabs for transcription; nothing changes your message.' : model.listen.phase === 'ready' ? 'Microphone permission may need companion help. Record up to 20 seconds.' : model.listen.phase === 'requesting' ? 'Waiting for microphone permission…' : model.listen.phase === 'recording' ? 'Recording · maximum 20 seconds. Stop when finished.' : model.listen.phase === 'processing' ? 'Recording stopped. Preparing transcript…' : model.listen.phase === 'transcript' ? <><p>Partner’s words · Check before accepting</p><p className="exact">{model.listen.transcript}</p></> : model.listen.error}</div> : null}
+          {alphabet ? <div className="alphabet-surface" aria-label="Visible alphabetical keyboard">
+            {alphabetRows.map(row => {
+              const rowStage = model.screen.value === 'rows', activeRow = model.screen.value === row;
+              const id = `row:${row}`, selected = !!((scanning || held) && target === id && input?.view?.revision === model.uiRevision);
+              return <div className="alphabet-row" key={row}>
+                {rowStage ? <div className="target-envelope" data-scan={selected} data-held={selected && held} data-choice={id}><button type="button" aria-label={`Row ${row.toUpperCase().split('').join(' ')}`} ref={element => { if (element) buttons.current.set(id, element); else buttons.current.delete(id); }} onClick={() => companion(id)}><span className="alphabet-cells">{Array.from(row).map(char => <span key={char}>{char.toUpperCase()}</span>)}</span></button></div>
+                : <div className="alphabet-cells">{Array.from(row).map(char => {
+                  const letterId = `char:${char}`, letterSelected = !!((scanning || held) && target === letterId && input?.view?.revision === model.uiRevision);
+                  return activeRow ? <div key={char} className="target-envelope" data-scan={letterSelected} data-held={letterSelected && held} data-choice={letterId}><button type="button" aria-label={char.toUpperCase()} ref={element => { if (element) buttons.current.set(letterId, element); else buttons.current.delete(letterId); }} onClick={() => companion(letterId)}>{char.toUpperCase()}</button></div> : <span className="alphabet-inactive" key={char}>{char.toUpperCase()}</span>;
+                })}</div>}
+              </div>;
+            })}
+            <p className="scan-label" aria-hidden="true">{held ? 'Release to choose' : model.screen.value === 'rows' ? 'Choose a row, then a letter' : 'Choose a letter · Other rows remain visible'}</p>
+          </div> : null}
           <div className="choices" data-grid={model.screen.name === 'phrases' || model.screen.name === 'keyboard' || model.screen.name === 'repair' || model.screen.name === 'context'}>
-            {sections.primary.map(renderChoice)}
+            {sections.primary.filter(option => !alphabet || !(option.id.startsWith('char:') || alphabetRows.some(row => option.id === `row:${row}`))).map(renderChoice)}
           </div>
           {sections.navigation.length ? <div className="navigation-choices">{sections.navigation.map(renderChoice)}</div> : null}
         </div>
@@ -327,7 +346,7 @@ export function App() {
       <label><input type="checkbox" checked={model.cloud.consent} onChange={event => {
         speech.current?.cancel(); const before = current.current;
         commit({ ...before, uiRevision: before.uiRevision + 1, authorization: null,
-          cloud: { ...before.cloud, consent: event.target.checked }, expansion: { ...before.expansion, request: null }, assistance: { ...before.assistance, request: null, items: [] } });
+          cloud: { ...before.cloud, consent: event.target.checked }, listen: { ...before.listen, session: null, phase: 'consent' }, expansion: { ...before.expansion, request: null }, assistance: { ...before.assistance, request: null, items: [] } });
       }} /> I am using fictional content and permit deliberate speech/suggestion requests to ElevenLabs and Google. No real private communication.</label>
       <p>ElevenLabs: {model.cloud.elevenReason}. Gemini: {model.cloud.geminiReason}. Selecting a voice or suggestion never starts speech.</p>
       <button type="button" onClick={() => { const before = current.current; commit({ ...before, cloud: { ...before.cloud, refresh: (before.cloud.refresh ?? 0) + 1 } }); }}>Refresh cloud status</button>

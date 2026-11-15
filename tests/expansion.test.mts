@@ -41,6 +41,8 @@ test('validation withholds invented illness, medication, causal explanation, dir
     ['maybe ready','I am ready.'],
     ['please stop now','Please stop later.'],
     ['I was weak yesterday','I am weak yesterday.'],
+    ["I wasn't weak yesterday",'I am not weak yesterday.'],
+    ["I didn't want reposition",'I do not want to be repositioned.'],
     ['help me','I help.'],
     ['my arm hurts','I hurt my arm.'],
     ['weak yesterday','I am weak yesterday.'],

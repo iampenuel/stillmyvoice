@@ -9,7 +9,7 @@ export type Authorization = Readonly<{
 export type Choice = Readonly<{ id: string; label: string; detail?: string; disabled?: boolean }>;
 export type Screen = {
   name: 'compose' | 'categories' | 'phrases' | 'keyboard' | 'repair' | 'review' | 'more'
-    | 'context' | 'expansion' | 'settings' | 'values' | 'voices' | 'premium-voices' | 'voice-detail' | 'assist' | 'assist-context' | 'suggestions' | 'reader' | 'clear' | 'paused' | 'speaking' | 'complete' | 'speech-error';
+    | 'neutral-replies' | 'listening' | 'context' | 'expansion' | 'settings' | 'values' | 'voices' | 'premium-voices' | 'voice-detail' | 'assist' | 'assist-context' | 'suggestions' | 'reader' | 'clear' | 'paused' | 'speaking' | 'complete' | 'speech-error';
   value?: string; page?: number;
 };
 type Repair = { start: number; end: number; revision: number; buffer: string; undo: string[]; upper: boolean; deleteRequested: boolean };
@@ -21,11 +21,15 @@ export type Model = {
   review: { revision: number; pages: string[]; seen: number[] } | null;
   settings: { pace: number; size: number; voice: string; rate: number; provider: 'browser' | 'elevenlabs'; systemVoice?: string };
   cloud: CloudState; assistance: { request: AssistRequest | null; revision: number; state: 'idle' | 'loading' | 'ready' | 'failed'; items: Suggestion[]; error: string };
-  context: CommunicationContext; expansion: ExpansionState;
+  context: CommunicationContext; expansion: ExpansionState; alphabetMode: 'visible' | 'grouped'; listenedContext: string; listen: ListeningState;
   voices: Voice[]; authorization: Authorization | null;
   speech: 'Not spoken' | 'Awaiting approval' | 'Preparing' | 'Speaking' | 'Stopped' | 'Playback finished' | 'Speech failed';
   lastPlayed: string | null; speechPreview?: boolean; serial: number; session: string;
 };
+export type ListeningState = { phase: 'consent' | 'ready' | 'requesting' | 'recording' | 'processing' | 'transcript' | 'error'; session: string | null; transcript: string; error: string };
+const initialListening = (): ListeningState => ({ phase: 'consent', session: null, transcript: '', error: '' });
+export const alphabetRows = ['abcde', 'fghij', 'klmno', 'pqrst', 'uvwxyz'] as const;
+const neutralReplies = ['Yes.', 'No.', 'Please repeat that.'] as const;
 export type ExpansionState = { request: ExpansionRequest | null; source: string; revision: number; result: ExpansionResult | null; state: 'idle' | 'loading' | 'ready' | 'failed'; error: string; answer: string; editing: boolean; buffer: string; undo: string[] };
 const initialExpansion = (): ExpansionState => ({ request: null, source: '', revision: 0, result: null, state: 'idle', error: '', answer: '', editing: false, buffer: '', undo: [] });
 const editingText = (s: Model) => s.expansion.editing ? s.expansion.buffer : s.repair?.buffer ?? s.draft;
@@ -47,7 +51,7 @@ const more = () => c('more', 'More controls');
 export function initialModel(session: string): Model {
   return { draft: '', revision: 0, uiRevision: 0, undo: [], screen: { name: 'compose' }, stack: [], notice: '', focusId: null,
     provenance: 'Your words', repair: null, upper: false, review: null, authorization: null, speech: 'Not spoken',
-    context: 'general', expansion: initialExpansion(), lastPlayed: null, serial: 0, session, voices: [], cloud: initialCloud(), assistance: { request: null, revision: 0, state: 'idle', items: [], error: '' },
+    context: 'general', expansion: initialExpansion(), alphabetMode: 'visible', listenedContext: '', listen: initialListening(), lastPlayed: null, serial: 0, session, voices: [], cloud: initialCloud(), assistance: { request: null, revision: 0, state: 'idle', items: [], error: '' },
     settings: { pace: 1600, size: 100, voice: '', rate: 1, provider: 'browser' } };
 }
 /** The exact enabled targets rendered by the UI, with its requested starting target. */
@@ -57,7 +61,7 @@ export function inputView(model: Model) {
   const start = model.focusId ? Math.max(0, targets.indexOf(model.focusId)) : 0;
   return { id: model.screen.name, revision: model.uiRevision, targets: [...targets.slice(start), ...targets.slice(0, start)] };
 }
-const navigationIds = new Set(['back', 'more', 'review', 'done', 'resume', 'stop', 'pause', 'all-categories', 'row:navigation', 'row:rows', 'char: ', 'erase', 'context-set:general']);
+const navigationIds = new Set(['back', 'more', 'review', 'done', 'resume', 'stop', 'pause', 'all-categories', 'row:navigation', 'row:rows', 'char: ', 'erase', 'context-set:general', 'keyboard-layout']);
 export function choiceSections(model: Model) {
   const list = choices(model);
   const overview = model.screen.name === 'keyboard' && (model.screen.value ?? 'rows') === 'rows' && !model.repair && !model.expansion.editing;
@@ -73,7 +77,10 @@ export function choices(s: Model): Choice[] {
   switch (screen.name) {
     case 'compose': return [c('phrases', 'Phrases'), c('spell', 'Spell'),
       c('expand', 'Expand my words', !canExpand(s), 'Start with your own keywords'), c('context', 'Context', false, contextOptions.find(option => option.id === s.context)?.name ?? 'General'),
+      ...(!s.draft.trim() && s.listenedContext ? [c('neutral-replies', 'Neutral replies', false, 'Fixed options · no inferred answer')] : []),
       c('review', 'Review message', !s.draft.trim()), more()];
+    case 'neutral-replies': return [...neutralReplies.map((text, i) => c(`neutral:${i}`, text)), back()];
+    case 'listening': return [...(s.listen.phase === 'consent' ? [c('listen-consent', 'Speaker agrees · Continue', !s.cloud.consent)] : s.listen.phase === 'ready' ? [c('listen-start', 'Start recording', !s.cloud.consent)] : s.listen.phase === 'recording' ? [c('listen-stop', 'Stop recording')] : s.listen.phase === 'transcript' ? [c('listen-accept', 'Use as conversation context'), c('listen-retry', 'Record again')] : s.listen.phase === 'error' ? [c('listen-retry', 'Try again')] : []), c('listen-cancel', 'Cancel listening')];
     case 'context': return [...contextOptions.map(option => c(`context-set:${option.id}`, option.name, false, (s.context === option.id ? 'Selected · ' : '') + option.description)), back()];
     case 'expansion': return [...(s.expansion.result?.status === 'candidate' ? [c('accept-expansion', 'Review this wording'), c('edit-expansion', 'Edit candidate')] : []),
       ...(s.expansion.result?.status === 'clarify' ? s.expansion.result.clarificationChoices.filter(text => text !== 'Keep my words').map((text, i) => c(`clarify-expansion:${i}`, text)) : []),
@@ -94,7 +101,7 @@ export function choices(s: Model): Choice[] {
         ...(s.repair ? [c('prefix:not', 'Add “do not ” before this word', false, `Stages: do not ${s.draft.slice(s.repair.start, s.repair.end)}`)] : []),
         c('done', s.expansion.editing ? 'Save candidate' : s.repair ? 'Apply correction' : 'Done', s.expansion.editing ? !s.expansion.buffer.trim() : !!s.repair && !s.repair.buffer && !s.repair.deleteRequested),
         c('char: ', 'Space'), c('erase', 'Backspace', !editingText(s)),
-        ...(!s.repair && !s.expansion.editing ? [c('expand', 'Expand my words', !canExpand(s))] : [])];
+        ...(!s.repair && !s.expansion.editing ? [c('expand', 'Expand my words', !canExpand(s)), c('keyboard-layout', s.alphabetMode === 'visible' ? 'Use grouped keyboard' : 'Use visible alphabet'), c('review', 'Review message', !s.draft.trim()), back()] : [])];
       if (row === 'numbers') return [c('row:01234', '0–4'), c('row:56789', '5–9'), c('row:editing', 'Space and editing'), c('row:navigation', 'Navigation'), c('row:rows', 'Letters')];
       if (row === 'punctuation') return [c("row:.,?!'", 'Period, comma, question, exclamation, apostrophe'), c('row:-:;/()', 'Dash, colon, semicolon, slash, parentheses'), c('row:editing', 'Space and editing'), c('row:navigation', 'Navigation'), c('row:rows', 'Letters')];
       if (row === 'editing') return [c('char: ', 'Space'), c('erase', 'Backspace', !editingText(s)),
@@ -114,7 +121,7 @@ export function choices(s: Model): Choice[] {
         ...(s.settings.provider === 'elevenlabs' && !speechAvailable(s) ? [c('fallback', 'Speak using system voice', !s.voices.length, 'Review again before approval.')] : []), c('edit', 'Make changes'), back(), more()];
     }
     case 'more': return [c('home', 'Your message', !!s.repair || s.expansion.editing, s.repair || s.expansion.editing ? 'Finish or cancel the correction first.' : undefined), c('undo', 'Undo', !(s.expansion.editing ? s.expansion.undo.length : s.repair ? s.repair.undo.length : s.undo.length)),
-      c('reader', 'Read message', !s.draft), c('assist', 'Suggestions', false, 'Optional wording help'), c('settings', 'Settings'), c('clear', 'New message', !s.draft), c('pause', 'Pause scanning'), back()];
+      c('listen', 'Listen', false, 'Optional partner question · fictional demo'), c('reader', 'Read message', !s.draft), c('assist', 'Suggestions', false, 'Optional wording help'), c('settings', 'Settings'), c('clear', 'New message', !s.draft), c('pause', 'Pause scanning'), back()];
     case 'settings': return [c('value:pace', 'Scan pace', false, `${s.settings.pace / 1000} seconds`),
       c('value:size', 'Text size', false, `${s.settings.size}%`), c('voices', 'Voice', false, (s.settings.provider === 'elevenlabs' ? s.cloud.voices : s.voices).find(x => x.id === s.settings.voice)?.name ?? 'Choose a voice'),
       c('value:rate', 'Speech rate', false, `${s.settings.rate}×`), c('preview', 'Preview voice', !speechAvailable(s)), back(), more()];
@@ -144,7 +151,7 @@ export function choices(s: Model): Choice[] {
 }
 export function title(s: Model): string {
   const names: Record<Screen['name'], string> = { compose: 'Make your message', categories: 'Choose a category', phrases: s.screen.value ?? 'Phrases',
-    context: 'Communication context', expansion: s.expansion.result?.status === 'clarify' ? 'One clarification' : 'Inspect expanded wording', keyboard: s.expansion.editing ? 'Edit candidate only' : s.repair ? 'Correct this word' : 'Spell your message', repair: 'Choose a word to correct', review: 'Review before speaking', more: 'More controls',
+    'neutral-replies': 'Neutral replies', listening: 'Listening', context: 'Communication context', expansion: s.expansion.result?.status === 'clarify' ? 'One clarification' : 'Inspect expanded wording', keyboard: s.expansion.editing ? 'Edit candidate only' : s.repair ? 'Correct this word' : 'Spell your message', repair: 'Choose a word to correct', review: 'Review before speaking', more: 'More controls',
     settings: 'Your settings', values: `Choose ${s.screen.value}`, voices: 'System voices', 'premium-voices': 'ElevenLabs voices', 'voice-detail': candidateVoice(s)?.name ?? 'Voice unavailable', assist: 'Optional suggestions', 'assist-context': 'Fictional conversation', suggestions: 'Suggestions', reader: 'Read your message', clear: 'Start a new message?',
     paused: 'Scanning paused', speaking: s.authorization?.preview ? 'Voice preview' : 'Your approved message', complete: 'Message playback ended', 'speech-error': 'Speech stopped' };
   return names[s.screen.name];
@@ -211,13 +218,23 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id.startsWith('phrase:')) { editDraft(s, s.draft + phraseList(s.screen.value!)![Number(id.slice(7))]); s.provenance = 'Your words'; home(s); }
   else if (id === 'spell') { s.repair = null; go(s, { name: 'keyboard', value: 'rows' }); }
   else if (id === 'review') startReview(s);
+  else if (id === 'listen') { s.listen = initialListening(); go(s, { name: 'listening' }); }
+  else if (id === 'neutral-replies') go(s, { name: 'neutral-replies' });
+  else if (id.startsWith('neutral:')) { editDraft(s, neutralReplies[Number(id.slice(8))]); s.provenance = 'Your words'; startReview(s); }
+  else if (id === 'listen-consent') s.listen.phase = 'ready';
+  else if (id === 'listen-start') { s.listen = { ...initialListening(), phase: 'requesting', session: `${s.session}:listen:${++s.serial}` }; }
+  else if (id === 'listen-stop') s.listen.phase = 'processing';
+  else if (id === 'listen-cancel') { s.listen = initialListening(); pop(s); }
+  else if (id === 'listen-retry') s.listen = initialListening();
+  else if (id === 'listen-accept') { s.listenedContext = s.listen.transcript; s.listen = initialListening(); s.expansion = initialExpansion(); home(s); s.notice = 'Conversation context accepted. Your words are unchanged.'; }
+  else if (id === 'keyboard-layout') s.alphabetMode = s.alphabetMode === 'visible' ? 'grouped' : 'visible';
   else if (id === 'context') go(s, { name: 'context' });
   else if (id.startsWith('context-set:')) { s.context = id.slice(12) as CommunicationContext; s.expansion = initialExpansion(); pop(s); }
   else if (id === 'expand' || id === 'retry-expansion' || id.startsWith('clarify-expansion:')) {
     if (!canExpand(s)) return before;
     const clarification = id.startsWith('clarify-expansion:') ? s.expansion.result?.clarificationChoices.filter(text => text !== 'Keep my words')[Number(id.slice(18))] ?? '' : id === 'retry-expansion' ? s.expansion.answer : '';
     s.expansion = { ...initialExpansion(), source: s.draft, revision: s.revision, state: 'loading', answer: clarification,
-      request: { id: `${s.session}:${++s.serial}`, text: s.draft, context: s.context, clarification, synthetic: true } };
+      request: { id: `${s.session}:${++s.serial}`, text: s.draft, context: s.context, clarification, transcript: s.listenedContext, synthetic: true } };
     if (s.screen.name !== 'expansion') go(s, { name: 'expansion' });
   } else if (id === 'keep-words') { s.expansion = initialExpansion(); home(s); }
   else if (id === 'accept-expansion') {
@@ -323,6 +340,7 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   } else if (id === 'stop') { s.authorization = null; s.speech = 'Stopped'; pop(s); }
   if (s.screen.name !== 'suggestions') s.assistance.request = null;
   if (s.screen.name !== 'expansion') s.expansion.request = null;
+  if (s.screen.name !== 'listening' && s.listen.session) s.listen = initialListening();
   return s;
 }
 export function speechEvent(before: Model, id: string, event: 'start' | 'end' | 'error'): Model {
@@ -339,6 +357,7 @@ export function speechEvent(before: Model, id: string, event: 'start' | 'end' | 
 /** An interruption is never navigation, a release, a resume or speech approval. */
 export function interrupt(before: Model, reason: string): Model {
   const s = structuredClone(before); s.uiRevision++; s.notice = reason;
+  if (s.listen?.session) s.listen = { ...initialListening(), phase: 'error', error: 'Listening stopped. Your words are kept.' };
   if (s.expansion?.request) { s.expansion.request = null; s.expansion.state = 'failed'; s.expansion.error = 'Request canceled. Your words are kept.'; }
   if (s.assistance?.request) { s.assistance.request = null; s.assistance.state = 'failed'; s.assistance.error = 'Request canceled. Your words are kept.'; }
   if (reason.startsWith('Layout changed')) s.review = null;
@@ -349,13 +368,13 @@ export function interrupt(before: Model, reason: string): Model {
 /** Fast refresh may retain React state while replacing controllers. Authored
  * state may survive; an old playback permission must never cross that boundary. */
 export function retireRuntimeAuthorization(before: Model): Model {
-  return before.authorization || before.assistance?.request || before.expansion?.request ? interrupt(before, 'Workspace restarted — speech approval canceled') : before;
+  return before.authorization || before.assistance?.request || before.expansion?.request || before.listen?.session ? interrupt(before, 'Workspace restarted — speech approval canceled') : before;
 }
 
 export const fictionalContexts = ['Are you uncomfortable?', 'Would you like to change position?', 'Can I help?'] as const;
 /** Upgrade retained development state without clearing an existing private draft. */
 export function withCloudDefaults(before: Model): Model {
-  return before.cloud && before.assistance && before.expansion && before.context ? before : { ...before, context: before.context ?? 'general', expansion: before.expansion ?? initialExpansion(), cloud: before.cloud ?? initialCloud(), assistance: before.assistance ?? { request: null, revision: before.revision, state: 'idle', items: [], error: '' } };
+  return before.cloud && before.assistance && before.expansion && before.context && before.listen && before.alphabetMode && before.listenedContext !== undefined ? before : { ...before, alphabetMode: before.alphabetMode ?? 'visible', listenedContext: before.listenedContext ?? '', listen: before.listen ?? initialListening(), context: before.context ?? 'general', expansion: before.expansion ?? initialExpansion(), cloud: before.cloud ?? initialCloud(), assistance: before.assistance ?? { request: null, revision: before.revision, state: 'idle', items: [], error: '' } };
 }
 export function finishAssistance(before: Model, request: AssistRequest, items: Suggestion[], error = ''): Model {
   if (before.screen.name !== 'suggestions' || before.assistance.request?.id !== request.id || before.revision !== before.assistance.revision
@@ -365,6 +384,14 @@ export function finishAssistance(before: Model, request: AssistRequest, items: S
 
 export function finishExpansion(before: Model, request: ExpansionRequest, result: ExpansionResult | null, error = ''): Model {
   if (before.screen.name !== 'expansion' || before.expansion.request?.id !== request.id || before.revision !== before.expansion.revision
-    || before.draft !== request.text || before.context !== request.context || !before.cloud.consent) return before;
+    || before.draft !== request.text || before.context !== request.context || before.listenedContext !== (request.transcript ?? '') || !before.cloud.consent) return before;
   return { ...before, uiRevision: before.uiRevision + 1, expansion: { ...before.expansion, request: null, state: error ? 'failed' : 'ready', result: error ? null : result, error } };
+}
+
+export function listeningEvent(before: Model, id: string, event: 'recording' | 'processing' | 'transcript' | 'error', text = ''): Model {
+  if (before.screen.name !== 'listening' || before.listen.session !== id) return before;
+  if (event === 'recording' && before.listen.phase !== 'requesting') return before;
+  if (event === 'processing' && before.listen.phase !== 'recording') return before;
+  if (event === 'transcript' && (before.listen.phase !== 'processing' || !text.trim() || text.length > 1000)) return before;
+  return { ...before, uiRevision: before.uiRevision + 1, listen: { ...before.listen, phase: event, transcript: event === 'transcript' ? text : before.listen.transcript, error: event === 'error' ? text : '', session: event === 'error' ? null : id } };
 }

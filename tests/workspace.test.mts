@@ -47,7 +47,7 @@ test('normal keyboard overview has five stable groups plus Expand and a compact 
   s = step(s, 'spell');
   const groups = ['row:abcde', 'row:fghij', 'row:klmno', 'row:pqrst', 'row:uvwxyz'];
   assert.deepEqual(choiceSections(s).primary.map(x => x.id), [...groups, 'expand']);
-  assert.deepEqual(choiceSections(s).navigation.map(x => x.id), ['row:editing', 'done', 'char: ', 'erase']);
+  assert.deepEqual(choiceSections(s).navigation.map(x => x.id), ['row:editing', 'done', 'char: ', 'erase', 'keyboard-layout', 'review', 'back']);
   s = step(step(s, 'row:fghij'), 'char:h');
   assert.equal(s.screen.value, 'rows'); assert.equal(inputView(s).targets[0], 'row:fghij');
   assert.deepEqual(choiceSections(s).primary.map(x => x.id), [...groups, 'expand']);
