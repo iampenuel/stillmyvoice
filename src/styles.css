@@ -197,3 +197,43 @@ main[data-large-text="true"] .interaction-scroll[data-screen="compose"] :is(.cho
   main:not([data-large-text="true"]) .interaction-scroll[data-screen="expansion"] .scan-label { display: none; }
   main:not([data-large-text="true"]) .interaction-scroll[data-screen="expansion"] .navigation-choices { padding-top: 8px; }
 }
+
+/* Context uses the available panel width; selection is separate from scan focus. */
+.interaction-scroll[data-screen="context"] .choices {
+  grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: 1fr;
+  gap: 16px;
+}
+.interaction-scroll[data-screen="context"] .choices button {
+  min-height: 152px; padding: 16px; gap: 8px;
+}
+.context-selection { min-height: 18px; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--muted); margin-top: auto; }
+.interaction-scroll[data-screen="context"] [data-selected="true"]:not([data-scan="true"]) button { border-color: #697582; background: #f4f5f6; }
+.interaction-scroll[data-screen="context"] .navigation-choices {
+  grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding-top: 12px;
+}
+.interaction-scroll[data-screen="context"] .navigation-choices button { min-height: 64px; padding: 10px 12px; gap: 4px; }
+.interaction-scroll[data-screen="context"] .navigation-choices .choice-label { font-size: calc(18px * var(--text-scale,1)); }
+.interaction-scroll[data-screen="context"] .navigation-choices .context-selection:empty { display: none; }
+@media (min-width: 64rem) and (min-height: 42rem) {
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .choices { gap: 16px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .choices button {
+    min-height: clamp(116px, calc((100dvh - 480px)/2), 180px); padding: 14px 16px; gap: 6px;
+  }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .navigation-choices { gap: 12px; padding-top: 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .navigation-choices button { min-height: 64px; }
+  .interaction-scroll[data-screen="context"] .navigation-choices .context-selection { display: none; }
+  .interaction-scroll[data-screen="context"] .navigation-choices [data-selected="true"] .context-selection { display: block; }
+}
+@media (min-width: 64rem) and (min-height: 42rem) and (max-height: 44rem) {
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] { gap: 8px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .choices { gap: 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .choices button { padding: 8px 12px; gap: 4px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-screen="context"] .navigation-choices { padding-top: 8px; }
+}
+@media (max-width: 30rem) {
+  .interaction-scroll[data-screen="context"] :is(.choices,.navigation-choices) { grid-template-columns: minmax(0,1fr); }
+}
+main[data-large-text="true"] .interaction-scroll[data-screen="context"] :is(.choices,.navigation-choices) { grid-template-columns: minmax(0,1fr); }
+
+/* Give each full interpretation a readable row; utility actions stay compact. */
+.interaction-scroll[data-screen="expansion"] .choices [data-choice^="clarify-expansion:"] { grid-column: 1 / -1; }

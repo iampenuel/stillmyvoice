@@ -6,7 +6,7 @@ export type Authorization = Readonly<{
   id: string; text: string; revision: number; voice: string; rate: number;
   provider: 'browser' | 'elevenlabs'; preview: boolean;
 }>;
-export type Choice = Readonly<{ id: string; label: string; detail?: string; disabled?: boolean }>;
+export type Choice = Readonly<{ id: string; label: string; detail?: string; disabled?: boolean; selected?: boolean }>;
 export type Screen = {
   name: 'compose' | 'categories' | 'phrases' | 'keyboard' | 'repair' | 'review' | 'more'
     | 'neutral-replies' | 'listening' | 'context' | 'expansion' | 'settings' | 'values' | 'voices' | 'premium-voices' | 'voice-detail' | 'assist' | 'assist-context' | 'suggestions' | 'reader' | 'clear' | 'paused' | 'speaking' | 'complete' | 'speech-error';
@@ -93,10 +93,10 @@ export function choices(s: Model): Choice[] {
       c('review', 'Review message', !s.draft.trim()), more()];
     case 'neutral-replies': return [...neutralReplies.map((text, i) => c(`neutral:${i}`, text)), back()];
     case 'listening': return [...(s.listen.phase === 'consent' ? [c('listen-consent', 'Speaker agrees · Continue', !s.cloud.consent)] : s.listen.phase === 'ready' ? [c('listen-start', 'Start recording', !s.cloud.consent)] : s.listen.phase === 'recording' ? [c('listen-stop', 'Stop recording')] : s.listen.phase === 'transcript' ? [c('listen-accept', 'Use as conversation context'), c('listen-retry', 'Record again')] : s.listen.phase === 'error' ? [c('listen-retry', 'Try again')] : []), c('listen-cancel', 'Cancel listening')];
-    case 'context': return [...contextOptions.map(option => c(`context-set:${option.id}`, option.name, false, (s.stack.length && s.context === option.id ? 'Selected · ' : '') + option.description)), ...(s.stack.length ? [back()] : [])];
+    case 'context': return [...contextOptions.map(option => ({ ...c(`context-set:${option.id}`, option.name, false, option.description), selected: !!s.stack.length && s.context === option.id })), back()];
     case 'expansion': return [...(s.expansion.result?.status === 'candidate' ? [c('accept-expansion', 'Use this wording'), c('edit-expansion', 'Edit')] : []),
       ...(s.expansion.result?.status === 'clarify' ? s.expansion.result.clarificationChoices.filter(text => text !== 'Keep my words').map((text, i) => c(`clarify-expansion:${i}`, text)) : []),
-      c('keep-words', 'Keep my words'), ...(s.expansion.state !== 'loading' ? [c('retry-expansion', 'Try another', !canExpand(s))] : []), back()];
+      c('keep-words', 'Keep my words'), ...(s.expansion.result?.status !== 'candidate' ? [c('continue-spelling', 'Continue spelling')] : []), ...(s.expansion.state !== 'loading' && s.expansion.result?.status !== 'candidate' ? [c('retry-expansion', 'Try another', !canExpand(s))] : []), back()];
     case 'categories': return [...Object.keys(phrases).map(x => c(`category:${x}`, x)), back(), more()];
     case 'phrases': return [...phraseList(screen.value!, s.context)!.map((x, i) => c(`phrase:${i}`, x)),
       ...(screen.value === 'Quick phrases' ? [c('all-categories', 'All categories')] : []), back(), more()];
@@ -242,9 +242,18 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id === 'keyboard-layout') s.alphabetMode = s.alphabetMode === 'visible' ? 'grouped' : 'visible';
   else if (id === 'context') go(s, { name: 'context' });
   else if (id.startsWith('context-set:')) { s.context = id.slice(12) as CommunicationContext; s.expansion = initialExpansion(); home(s); }
+  else if (id === 'continue-spelling') { s.expansion = initialExpansion(); home(s); go(s, { name: 'keyboard', value: 'rows' }); }
   else if (id === 'expand' || id === 'retry-expansion' || id.startsWith('clarify-expansion:')) {
-    if (!canExpand(s)) return before;
     const clarification = id.startsWith('clarify-expansion:') ? s.expansion.result?.clarificationChoices.filter(text => text !== 'Keep my words')[Number(id.slice(18))] ?? '' : id === 'retry-expansion' ? s.expansion.answer : '';
+    if (id.startsWith('clarify-expansion:') && !['Belly pain','Weakness','Both'].includes(clarification)) {
+      if (!clarification || s.expansion.source !== s.draft || s.expansion.revision !== s.revision) return before;
+      // Stage the exact validated interpretation, with no second model call,
+      // draft replacement or speech authorization.
+      s.expansion.result = { status:'candidate', candidate:clarification, unresolvedCues:[], clarificationQuestion:'', clarificationChoices:[] };
+      s.expansion.request = null; s.expansion.answer = ''; s.focusId = 'accept-expansion';
+      return s;
+    }
+    if (!canExpand(s)) return before;
     s.expansion = { ...initialExpansion(), source: s.draft, revision: s.revision, state: 'loading', answer: clarification,
       request: { id: `${s.session}:${++s.serial}`, text: s.draft, context: s.context, clarification, transcript: s.listenedContext, synthetic: true } };
     if (s.screen.name !== 'expansion') go(s, { name: 'expansion' });

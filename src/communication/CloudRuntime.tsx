@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { cloudFailure, requestStillCurrent } from './cloud-error.mts';
 import { finishAssistance, finishExpansion, type Model } from './model.mts';
-import type { ExpansionResult } from './expansion-contract.mts';
+import { isExpansionResult, type ExpansionResult } from './expansion-contract.mts';
 import { approvedVoices, type PremiumVoice, type Suggestion } from './cloud-contract.mts';
 
 type Props = { model: Model; current: { current: Model }; commit: (next: Model) => void; canUpdate: () => boolean };
@@ -88,14 +88,7 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
         if (!await requestStillCurrent(controller.signal, expansionRequest.id, () => current.current.expansion.request?.id)) return;
         if (!active() || !current.current.cloud.consent || !current.current.cloud.gemini) throw Error('Request canceled. Your words are kept.');
         const result = await json('/api/expansion', AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), expansionRequest);
-        if (!result || Object.keys(result).sort().join(',') !== 'candidate,clarificationChoices,clarificationQuestion,status,unresolvedCues'
-          || !['candidate', 'clarify', 'insufficient_input'].includes(result.status)
-          || typeof result.candidate !== 'string' || result.candidate.length > 360
-          || typeof result.clarificationQuestion !== 'string' || result.clarificationQuestion.length > 120
-          || !Array.isArray(result.unresolvedCues) || result.unresolvedCues.length > 4 || !result.unresolvedCues.every((cue: unknown) => typeof cue === 'string' && cue.length <= 60)
-          || !Array.isArray(result.clarificationChoices) || result.clarificationChoices.length > 4 || !result.clarificationChoices.every((choice: unknown) => typeof choice === 'string' && choice.length > 0 && choice.length <= 80)
-          || (result.status === 'candidate' && (!result.candidate.trim() || result.clarificationQuestion || result.clarificationChoices.length))
-          || (result.status !== 'candidate' && result.candidate)) throw Error('No reliable expansion. Keep your own words.');
+        if (!isExpansionResult(result)) throw Error('Gemini returned an invalid structured response. Your words are kept.');
         if (!controller.signal.aborted) { pending = { result, error: '' }; apply(); }
       } catch (error) {
         if (!controller.signal.aborted) { pending = { result: null, error: error instanceof Error ? error.message : 'Expansion unavailable.' }; apply(); }

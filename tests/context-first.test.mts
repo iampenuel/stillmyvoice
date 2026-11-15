@@ -13,10 +13,10 @@ const enter = (context: CommunicationContext = 'general') => step(initialModel('
 test('fresh context screen has the owner order, General and direct silent entry to the same workspace', () => {
   const initial = initialModel('fresh-session');
   assert.equal(initial.screen.name, 'context');
-  assert.deepEqual(choices(initial).map(choice => choice.label), ['Home', 'Healthcare', 'Community', 'Education & Work', 'General']);
-  assert.deepEqual(inputView(initial).targets, ['context-set:home', 'context-set:healthcare', 'context-set:community', 'context-set:education_work', 'context-set:general']);
+  assert.deepEqual(choices(initial).map(choice => choice.label), ['Home', 'Healthcare', 'Community', 'Education & Work', 'General', 'Back']);
+  assert.deepEqual(inputView(initial).targets, ['context-set:home', 'context-set:healthcare', 'context-set:community', 'context-set:education_work', 'context-set:general', 'back']);
   assert.equal(choices(initial).find(choice => choice.id === 'context-set:general')?.detail, 'No specific context');
-  assert.equal(choices(initial).some(choice => choice.id === 'back'), false);
+  assert.equal(choices(initial).some(choice => choice.id === 'back'), true);
   for (const { id } of contextOptions) {
     const model = step(initial, `context-set:${id}`);
     assert.equal(model.context, id); assert.equal(model.screen.name, 'compose');
@@ -119,4 +119,16 @@ test('a complete context switch cycle cannot also choose a phrase or repeat duri
   controller.up(); assert.equal(accepted, 1); assert.equal(model.draft, '');
   controller.down(); controller.up(); assert.equal(model.screen.name, 'phrases'); assert.equal(accepted, 2);
   assert.equal(model.draft, ''); assert.equal(model.authorization, null); controller.stop('done', false);
+});
+
+test('context selection has a separate semantic state and leaves descriptions clean',()=>{
+ const initial=initialModel('selected-context');
+ assert.ok(choices(initial).filter(c=>c.id.startsWith('context-set:')).every(c=>c.selected===false));
+ let m=step(step(initial,'context-set:healthcare'),'context');
+ for(const option of contextOptions) {
+  const choice=choices(m).find(c=>c.id===`context-set:${option.id}`)!;
+  assert.equal(choice.detail,option.description);assert.equal(choice.selected,option.id==='healthcare');
+ }
+ assert.deepEqual(choiceSections(m).navigation.map(c=>c.id),['context-set:general','back']);
+ assert.equal(m.authorization,null);
 });

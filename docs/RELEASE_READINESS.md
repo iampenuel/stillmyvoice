@@ -1,3 +1,11 @@
+# Current release gate — November 15, 2026
+
+See [reliability and context-layout evidence](HP26_RELIABILITY.md). Current automated verification passes (177 tests, typecheck, build, zero credential findings), and the corrected context layout was inspected at all requested sizes. Real typo correction works as explicit reviewable wording; comprehensive week/weak ambiguity usefulness is not accepted. The latest actual microphone/physical speech sequence is awaiting owner evidence. Gaze remains NO-GO.
+
+Only a local checkpoint is authorized in the latest scope. Public main remains a0c6491; current changes are not published. No Devpost submission/deployment/DNS action occurred. Signed-in draft inspection was blocked by automatic review, so its current readiness is unverified; the older 2/5 state below is inherited. The official detailed rules were rechecked and retain the November 15 8:00 AM Eastern hard cutoff (earlier than the page's 8:30 banner).
+
+The following material is retained historical preparation and the existing demonstration script.
+
 # HackPrinceton release readiness
 
 ## Confirmed rules and deadlines

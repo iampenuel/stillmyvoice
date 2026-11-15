@@ -9,6 +9,8 @@ export function cloudFailure(status: number, payload: unknown): string {
     case 'ASSISTANCE_ALREADY_REQUESTED': return 'That wording request was already used. Your words are kept; no duplicate was sent.';
     case 'GEMINI_QUOTA': return `Gemini’s API rate or quota limit was reached.${retry !== null ? ` The provider reports ${retry} seconds before another request.` : ''} Your words are kept.`;
     case 'LOCAL_RATE_LIMIT': return `The local app is receiving requests too quickly.${retry !== null ? ` Wait ${retry} seconds.` : ''} Your words are kept.`;
+    case 'INVALID_EXPANSION': return 'Gemini returned an invalid structured response. Your words are kept.';
+    case 'GEMINI_UNAVAILABLE': return 'Gemini is temporarily unavailable. Your words are kept.';
     case 'GEMINI_DISABLED': return 'Gemini is unavailable under the current demo safeguards. Your words are kept.';
     case 'GEMINI_CANCELLED_OR_TIMEOUT': return 'The wording request was canceled or timed out. Your words are kept.';
     default: return status === 429 ? 'This request was limited; the cause is unavailable. Your words are kept.' : 'Service unavailable. Your words are kept.';

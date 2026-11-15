@@ -35,15 +35,15 @@ test('reviewed transcript remains optional relevance data; no keywords means no 
  assert.equal(validateExpansionRequest(expansion).transcript,undefined);
  assert.equal(knownAmbiguity({...expansion,text:'',transcript:'How are you feeling?'})?.status,'insufficient_input');
  assert.equal(knownAmbiguity({...expansion,transcript:'How are you feeling today?'}),null);
- const r=validateExpansion({status:'candidate',candidate:'My belly hurts because I have an infection.',unresolvedCues:[],clarificationQuestion:'',clarificationChoices:[]},{...expansion,transcript:'You have an infection.'});assert.equal(r.status,'insufficient_input');
+ const r=validateExpansion({status:'candidate',candidate:'My belly hurts because I have an infection.',unresolvedCues:[],clarificationQuestion:'',clarificationChoices:[]},{...expansion,transcript:'You have an infection.'});assert.equal(r.status,'validation_rejected');
 });
 test('incorrect context negation/direction withholds while preserving the exact authored keywords',async()=>{
  let calls=0;const p=createGemini({GEMINI_API_KEY:'synthetic-test-key',SMV_CLOUD_MODE:'local-synthetic-demo',SMV_GEMINI_FREE_TIER_CONFIRMED:'true'},async()=>{calls++;throw Error('must not infer conflicting context');});
  for(const [text,transcript] of [['not want reposition','You want reposition.'],['move left arm','Move your right arm.']]){
-  const request={...expansion,text,transcript};assert.equal(knownAmbiguity(request)?.status,'insufficient_input');assert.equal(request.text,text);
+  const request={...expansion,text,transcript};assert.equal(knownAmbiguity(request)?.status,'validation_rejected');assert.equal(request.text,text);
  }
  const result=await p.expand({...expansion,text:'move left arm',transcript:'Move your right arm.'},new AbortController().signal);
- assert.equal(result.status,'insufficient_input');assert.equal(calls,0);
+ assert.equal(result.status,'validation_rejected');assert.equal(calls,0);
 });
 test('correct reviewed context is submitted only with an explicit expansion request',async()=>{
  let calls=0;const p=createGemini({GEMINI_API_KEY:'synthetic-test-key',SMV_CLOUD_MODE:'local-synthetic-demo',SMV_GEMINI_FREE_TIER_CONFIRMED:'true'},async payload=>{calls++;

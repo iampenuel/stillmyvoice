@@ -52,7 +52,7 @@ export const suggestionSchema = {
   },
 };
 export type Generate = (input: { model: string; instruction: string; contents: string; schema: typeof suggestionSchema | typeof expansionSchema }, signal: AbortSignal) => Promise<string>;
-type RequestEvidence = { upstreamCalls: number; providerOutcome: 'not_called' | 'success' | 'failure'; providerLatencyMs: number | null; schemaValidated: boolean | null };
+type RequestEvidence = { upstreamCalls: number; providerOutcome: 'not_called' | 'success' | 'failure'; providerLatencyMs: number | null; schemaValidated: boolean | null; validationOutcome?: ExpansionResult['status'] };
 type CompletedEvidence = RequestEvidence & { route: 'suggestions' | 'expansion'; model: string; requestNumber: number; outcome: 'success' | 'failure'; totalLatencyMs: number; errorCode?: string };
 /** Only fixed provider enums, known metric names and bounded numeric retry evidence
  * cross this boundary. Raw SDK messages may contain submitted text or secrets. */
@@ -146,13 +146,15 @@ export function createGemini(env: Record<string, string | undefined>, generate: 
       const request = validateExpansionRequest(value);
       return run(request.id, 'expansion', signal, async (bounded, evidence) => {
         const clarification = knownAmbiguity(request);
-        if (clarification) return clarification;
+        if (clarification) { evidence.validationOutcome = clarification.status; return clarification; }
         const text = await invoke({ model: GEMINI_MODEL, schema: expansionSchema, instruction: expansionInstruction,
           contents: JSON.stringify({ exactKeywords: request.text, optionalContext: request.context, explicitClarification: request.clarification, ...(request.transcript ? { reviewedTranscript: request.transcript } : {}) }),
         }, bounded, evidence);
         bounded.throwIfAborted();
         if (text.length > 4096) throw new ProviderError('INVALID_EXPANSION', 502);
-        const result = validateExpansion(JSON.parse(text), request); evidence.schemaValidated = true; return result;
+        let parsed: unknown;
+        try { parsed = JSON.parse(text); } catch { throw new ProviderError('INVALID_EXPANSION', 502); }
+        const result = validateExpansion(parsed, request); evidence.schemaValidated = true; evidence.validationOutcome = result.status; return result;
       });
     },
   };

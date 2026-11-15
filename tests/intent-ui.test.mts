@@ -77,7 +77,7 @@ test('late expansion cannot overwrite edits, changed context, focus loss, cancel
     interrupt(pending, 'Focus lost'), retireRuntimeAuthorization(pending), step(pending, 'keep-words'), step(pending, 'back'),
   ]) assert.equal(finishExpansion(altered, request, candidate), altered);
   assert.equal(interrupt(pending, 'Focus lost').expansion.request, null);
-  let m = receive(pending); const firstId = request.id; m = step(m, 'retry-expansion');
+  let m = receive(pending); const firstId = request.id; m = step(step(m, 'keep-words'), 'expand');
   assert.notEqual(m.expansion.request!.id, firstId); assert.equal(m.expansion.request!.text, request.text);
   assert.equal(finishExpansion(m, request, candidate), m);
 });
