@@ -1,10 +1,10 @@
-# Project state — reliability repair, owner acceptance pending
+# Project state — reliability repair and exercised pathway accepted
 
 November 15, 2026, Eastern. The owner explicitly authorized application source repair, targeted context UI correction, tests and a local checkpoint. The historical SW-00-only scope is superseded for this task; hardware, credentials, billing, input and speech authorization protections remain.
 
-Current changes and evidence are in [the reliability checkpoint](HP26_RELIABILITY.md). 177 tests, typecheck, build and a 103-file credential scan pass. Actual Chrome context cards now use the full-width 2×2 rectangular layout, paired General/Back controls and distinct Selected state; 1440×900, 1024×672, actual 200% zoom and simulated scan/selected distinction were inspected.
+Current changes and evidence are in [the reliability checkpoint](HP26_RELIABILITY.md). 177 tests, typecheck, build and a 104-file credential scan pass. Actual Chrome context cards now use the full-width 2×2 rectangular layout, paired General/Back controls and distinct Selected state; 1440×900, 1024×672, actual 200% zoom and simulated scan/selected distinction were inspected.
 
-Real Gemini typo repair reached explicit choice and silent Review. Ambiguous week/weak generation remains inconsistent; six bounded live calls exposed dropped cues/recurrence, and the final independent validator rejects those alternatives. No full semantic reliability or combined physical acceptance is claimed. API budget carried forward at 18/20, leaving two owner-test requests. Actual microphone/transcript and exact heard LaSean speech are awaiting the owner's current physical run. Gaze remains NO-GO. No public push, deployment, DNS change or Devpost submission occurred. Public main was observed at a0c6491.
+Real Gemini typo repair reached explicit choice and silent Review. Ambiguous week/weak generation remains inconsistent; six bounded live calls exposed dropped cues/recurrence, and the final independent validator rejects those alternatives. The owner subsequently confirmed the actual microphone transcript/context acceptance, audible edited wording, silent Review, fresh switch Speak and Stop. The model retained an apparent typo that the owner edited manually; general semantic reliability is not accepted. API budget is now 19/20 after one owner expansion (one upstream call, schema valid, candidate accepted); one request remains. Exact private acceptance wording stays outside Git. Gaze remains NO-GO. No public push, deployment, DNS change or Devpost submission occurred. Public main was observed at a0c6491.
 
 The prior checkpoint follows as history; its completion counts and remaining gates are superseded above.
 
