@@ -1,14 +1,18 @@
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #1b232b; background: #f4f5f6; font-synthesis: none; line-height: 1.45;
-  --muted: #56616c; --line: #b5bdc5; --accent: #174fc4;
+  --muted: #56616c; --line: #b5bdc5;
+  --focus-ink: #252525; --focus-surface: #f2f2f2; --held-surface: #e5e5e5;
+  --selected-line: #626262; --selected-surface: #f4f4f4;
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
 button, input { font: inherit; }
+input, select, textarea { accent-color: var(--focus-ink); }
 button { color: inherit; cursor: pointer; border: 1px solid #9ba6b1; border-radius: 8px; background: #fff; min-height: 52px; padding: 12px 16px; text-align: left; }
 button:disabled { cursor: default; color: #626b74; background: #f1f3f5; border-color: #d7dce1; }
-button:focus-visible, summary:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 3px solid #1b232b; outline-offset: 4px; }
+/* Cover keyboard, companion and programmatic focus without a native blue ring. */
+:is(button, input, select, textarea, summary, a[href], [tabindex]):focus { outline: 3px solid var(--focus-ink); outline-offset: 3px; }
 main { --bounded-workspace: 0; max-width: 96rem; min-height: 100dvh; padding: 24px 28px 16px; margin: auto; display: flex; flex-direction: column; gap: 20px; font-size: calc(18px * var(--text-scale, 1)); }
 h1, h2, h3, p { margin: 0; }
 h1, h2 { font-size: calc(22px * var(--text-scale, 1)); line-height: 1.3; font-weight: 600; letter-spacing: -.015em; }
@@ -44,11 +48,10 @@ h3 { font-size: 20px; font-weight: 600; margin-block: 24px 12px; }
 .choice-label { font-size: calc(23px * var(--text-scale, 1)); line-height: 1.28; font-weight: 500; overflow-wrap: anywhere; }
 .choice-detail { font-size: calc(15px * var(--text-scale, 1)); line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
 .navigation-choices .choice-label { font-size: calc(20px * var(--text-scale, 1)); }
-.scan-label { font-size: 14px; line-height: 20px; min-height: 20px; margin-top: auto; color: var(--accent); }
-.target-envelope[data-scan="true"] button { background: #edf3ff; border-color: var(--accent); outline: 3px solid var(--accent); outline-offset: 3px; }
-.target-envelope[data-scan="true"] button:focus-visible { outline: 4px double #1b232b; outline-offset: 4px; }
-.target-envelope[data-held="true"] button { border-color: #153b83; outline-color: #153b83; outline-style: double; outline-width: 4px; background: #dce8ff; }
-.target-envelope[data-held="true"] .scan-label { color: #153b83; font-weight: 600; }
+.scan-label { font-size: 14px; line-height: 20px; min-height: 20px; margin-top: auto; color: var(--focus-ink); }
+.target-envelope[data-scan="true"] button { background: var(--focus-surface); border-color: var(--focus-ink); outline: 3px solid var(--focus-ink); outline-offset: 3px; }
+.target-envelope[data-held="true"] button { border-color: var(--focus-ink); outline-color: var(--focus-ink); outline-style: double; outline-width: 4px; background: var(--held-surface); }
+.target-envelope[data-held="true"] .scan-label { color: var(--focus-ink); font-weight: 600; }
 .notice, .recovery-row { flex: 0 0 auto; padding-block: 12px; border-block: 1px solid #dce1e6; font-size: calc(16px * var(--text-scale,1)); color: var(--muted); }
 .recovery-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
 .recovery-row p { flex: 1 1 14rem; }
@@ -107,7 +110,8 @@ summary { cursor: pointer; padding-block: 12px; font-weight: 600; }
 main[data-large-text="true"] .navigation-choices { grid-template-columns: minmax(0,1fr); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
 @media (forced-colors: active) {
-  .target-envelope[data-scan="true"] button { outline-color: Highlight; border-color: Highlight; }
+  /* Honor the user's contrast palette without a separate accent highlight. */
+  :root { --focus-ink: ButtonText; --focus-surface: Canvas; --held-surface: Canvas; --selected-line: ButtonText; --selected-surface: Canvas; }
   .target-envelope[data-held="true"] button { outline-style: double; }
 }
 
@@ -119,10 +123,10 @@ main[data-large-text="true"] .navigation-choices { grid-template-columns: minmax
   font-size: calc(23px * var(--text-scale,1)); font-weight: 500; line-height: 1.2;
 }
 .alphabet-row .target-envelope button.alphabet-row-control { min-height: 44px; padding: 0; border: 0; border-radius: 6px; background: transparent; }
-.alphabet-row > .target-envelope[data-scan="true"] .alphabet-key { background: #edf3ff; border-color: var(--accent); }
-.alphabet-row > .target-envelope[data-held="true"] .alphabet-key { background: #dce8ff; border-color: #153b83; }
-.alphabet-row .target-envelope[data-scan="true"] button.alphabet-key { background: #edf3ff; border-color: var(--accent); }
-.alphabet-row .target-envelope[data-held="true"] button.alphabet-key { background: #dce8ff; border-color: #153b83; }
+.alphabet-row > .target-envelope[data-scan="true"] .alphabet-key { background: var(--focus-surface); border-color: var(--focus-ink); }
+.alphabet-row > .target-envelope[data-held="true"] .alphabet-key { background: var(--held-surface); border-color: var(--focus-ink); }
+.alphabet-row .target-envelope[data-scan="true"] button.alphabet-key { background: var(--focus-surface); border-color: var(--focus-ink); }
+.alphabet-row .target-envelope[data-held="true"] button.alphabet-key { background: var(--held-surface); border-color: var(--focus-ink); }
 .alphabet-row .target-envelope[data-scan="true"] button { outline-offset: 0; }
 .alphabet-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; margin-top: auto; border-top: 1px solid #dce1e6; padding-top: 8px; }
 .alphabet-controls > :only-child { grid-column: 1 / -1; }
@@ -207,7 +211,7 @@ main[data-large-text="true"] .interaction-scroll[data-screen="compose"] :is(.cho
   min-height: 152px; padding: 16px; gap: 8px;
 }
 .context-selection { min-height: 18px; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--muted); margin-top: auto; }
-.interaction-scroll[data-screen="context"] [data-selected="true"]:not([data-scan="true"]) button { border-color: #697582; background: #f4f5f6; }
+.interaction-scroll[data-screen="context"] [data-selected="true"]:not([data-scan="true"]) button { border-color: var(--selected-line); background: var(--selected-surface); }
 .interaction-scroll[data-screen="context"] .navigation-choices {
   grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding-top: 12px;
 }
