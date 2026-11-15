@@ -73,10 +73,12 @@ export class PublicRecordingUnavailableError extends Error {
 /** Check the actual server session immediately before public microphone acquisition. */
 export async function acquirePublicRecording(signal: AbortSignal, deps: { fetcher: typeof fetch; getStream: () => Promise<Stream>; now?: () => number }): Promise<Stream> {
   const now = deps.now ?? Date.now;
+  // Native Window.fetch must not receive the dependency object as its receiver.
+  const { fetcher } = deps;
   let expiresAt: number;
   try {
     signal.throwIfAborted();
-    const response = await deps.fetcher('/api/status', { method: 'GET', credentials: 'same-origin', cache: 'no-store',
+    const response = await fetcher('/api/status', { method: 'GET', credentials: 'same-origin', cache: 'no-store',
       signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]) });
     if (response.status === 401 || response.status === 403) throw new PublicRecordingUnavailableError('access');
     if (!response.ok) throw Error();

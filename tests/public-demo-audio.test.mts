@@ -133,3 +133,18 @@ test('Listening distinguishes locked origin, unavailable provider and failed sta
   }),error=>error instanceof PublicRecordingUnavailableError && message.test(error.message) && !error.message.includes('private network details'));
   assert.equal(microphones,0);
 });
+
+
+test('public microphone preflight calls injected native fetch without a foreign receiver', async () => {
+  let calls=0, microphones=0;
+  const stream={getTracks:()=>[]};
+  const fetcher: typeof fetch = async function(this: unknown, url, init) {
+    assert.equal(this, undefined, 'Window.fetch throws Illegal invocation with the dependencies object as this');
+    calls++; assert.equal(url,'/api/status'); assert.equal(init?.credentials,'same-origin');
+    return Response.json({access:{authorized:true,expiresAt:2000},scribe:{available:true}});
+  };
+  const result=await acquirePublicRecording(new AbortController().signal,{
+    fetcher,now:()=>1000,getStream:async()=>{microphones++;return stream;}
+  });
+  assert.equal(result,stream);assert.equal(calls,1);assert.equal(microphones,1);
+});
