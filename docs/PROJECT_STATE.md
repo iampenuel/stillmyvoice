@@ -1,4 +1,9 @@
-# Project state — accepted focus recovery; final provider integration sprint
+# Project state — cloud integration implemented; physical cloud acceptance pending
+Current checkpoint update: live ElevenLabs and direct Gemini are now integrated after dashboard account checks. Six exact approved voices are configured; five pass Flash v2.5 metadata checks and LaSean is visibly unavailable because its tuning reports failed. Cecily browser preview and one approved phrase completed; Gemini contextual and negation-preserving spelling calls succeeded. A controlled API outage preserved the draft and required separate system-speech approval. These are developer/browser observations, **not owner physical or audible cloud acceptance**. See [provider evidence, limits and verified IDs](PROVIDER_SETUP.md).
+
+Executed: 93 Node tests, typecheck, production build and source/bundle secret scan passed. Accepted input reducer and firmware are unchanged. Compact recovery/status polish is checkpoint c1a7bc7. The development configuration reload cleared the previous tab draft; normal focus preservation remains distinct from reload. Optional Scribe and gaze are deferred until mandatory acceptance and release readiness. No deployment, DNS change, remote publication or submission has occurred.
+
+The following paragraphs retain earlier checkpoint history; their disabled-provider and pending-implementation statements are superseded by this update.
 
 Current authority: the final consolidated engineering directive, plus master, UX-03 and SESSION-01 November 14 directives. Source remains in the verified external repository. No firmware/wiring, DNS, deployment or public submission changes in this checkpoint. Provider calls remain disabled pending account protections.
 

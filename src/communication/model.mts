@@ -1,3 +1,4 @@
+import { initialCloud, PREVIEW_TEXT, type CloudState, type AssistRequest, type Suggestion } from './cloud-contract.mts';
 /** Authorship and navigation only. This module cannot generate input or play audio. */
 export type Voice = Readonly<{ id: string; name: string; lang: string; local: boolean }>;
 export type Authorization = Readonly<{
@@ -7,7 +8,7 @@ export type Authorization = Readonly<{
 export type Choice = Readonly<{ id: string; label: string; detail?: string; disabled?: boolean }>;
 export type Screen = {
   name: 'compose' | 'categories' | 'phrases' | 'keyboard' | 'repair' | 'review' | 'more'
-    | 'settings' | 'values' | 'voices' | 'reader' | 'clear' | 'paused' | 'speaking' | 'complete' | 'speech-error';
+    | 'settings' | 'values' | 'voices' | 'premium-voices' | 'assist' | 'assist-context' | 'suggestions' | 'reader' | 'clear' | 'paused' | 'speaking' | 'complete' | 'speech-error';
   value?: string; page?: number;
 };
 type Repair = { start: number; end: number; revision: number; buffer: string; undo: string[]; upper: boolean; deleteRequested: boolean };
@@ -17,7 +18,8 @@ export type Model = {
   provenance: 'Your words' | 'Your edited wording' | 'Suggestion selected';
   repair: Repair | null; upper: boolean;
   review: { revision: number; pages: string[]; seen: number[] } | null;
-  settings: { pace: number; size: number; voice: string; rate: number; provider: 'browser' | 'elevenlabs' };
+  settings: { pace: number; size: number; voice: string; rate: number; provider: 'browser' | 'elevenlabs'; systemVoice?: string };
+  cloud: CloudState; assistance: { request: AssistRequest | null; revision: number; state: 'idle' | 'loading' | 'ready' | 'failed'; items: Suggestion[]; error: string };
   voices: Voice[]; authorization: Authorization | null;
   speech: 'Not spoken' | 'Awaiting approval' | 'Preparing' | 'Speaking' | 'Stopped' | 'Playback finished' | 'Speech failed';
   lastPlayed: string | null; serial: number; session: string;
@@ -31,12 +33,13 @@ export const phrases: Record<string, readonly string[]> = {
 export const quickPhrases = ['Please stop.', 'I need help.', 'Please reposition me.', 'I am not ready.', 'Please repeat that.', 'That is not what I meant.'] as const;
 const phraseList = (category: string) => category === 'Quick phrases' ? quickPhrases : phrases[category];
 const c = (id: string, label: string, disabled = false, detail?: string): Choice => ({ id, label, disabled, detail });
+const speechAvailable = (s: Model) => !!s.settings.voice && (s.settings.provider === 'browser' || (s.cloud.consent && s.cloud.elevenlabs && s.cloud.voices.some(v => v.id === s.settings.voice && v.available)));
 const back = () => c('back', 'Back');
 const more = () => c('more', 'More controls');
 export function initialModel(session: string): Model {
   return { draft: '', revision: 0, uiRevision: 0, undo: [], screen: { name: 'compose' }, stack: [], notice: '', focusId: null,
     provenance: 'Your words', repair: null, upper: false, review: null, authorization: null, speech: 'Not spoken',
-    lastPlayed: null, serial: 0, session, voices: [],
+    lastPlayed: null, serial: 0, session, voices: [], cloud: initialCloud(), assistance: { request: null, revision: 0, state: 'idle', items: [], error: '' },
     settings: { pace: 1600, size: 100, voice: '', rate: 1, provider: 'browser' } };
 }
 /** The exact enabled targets rendered by the UI, with its requested starting target. */
@@ -59,7 +62,7 @@ export function choices(s: Model): Choice[] {
   const screen = s.screen, page = screen.page ?? 0;
   switch (screen.name) {
     case 'compose': return [c('phrases', 'Phrases'), c('spell', 'Spell'),
-      c('assist', 'Get suggestions', true, 'Cloud assistance is not configured.'),
+      c('assist', 'Get suggestions', false, 'Optional wording help'),
       c('review', 'Review message', !s.draft.trim()), more()];
     case 'categories': return [...Object.keys(phrases).map(x => c(`category:${x}`, x)), back(), more()];
     case 'phrases': return [...phraseList(screen.value!)!.map((x, i) => c(`phrase:${i}`, x)),
@@ -91,31 +94,41 @@ export function choices(s: Model): Choice[] {
     case 'review': {
       const complete = s.review?.revision === s.revision && s.review.seen.length === s.review.pages.length;
       return [...(s.review && s.review.pages.length > 1 ? [c('next', 'Next part', page + 1 >= s.review.pages.length), c('previous', 'Previous part', page === 0)] : []),
-        c('speak', s.lastPlayed === s.draft ? 'Speak again' : 'Speak exactly this', !complete || !s.settings.voice,
-          !complete ? 'Read every part before speaking.' : !s.settings.voice ? 'Choose an available voice in Settings.' : 'A separate selection authorizes the full message.'),
-        c('edit', 'Make changes'), back(), more()];
+        c('speak', s.lastPlayed === s.draft ? 'Speak again' : 'Speak exactly this', !complete || !speechAvailable(s),
+          !complete ? 'Read every part before speaking.' : !speechAvailable(s) ? 'Choose an available voice in Settings.' : 'A separate selection authorizes the full message.'),
+        ...(s.settings.provider === 'elevenlabs' && !speechAvailable(s) ? [c('fallback', 'Speak using system voice', !s.voices.length, 'Review again before approval.')] : []), c('edit', 'Make changes'), back(), more()];
     }
     case 'more': return [c('home', 'Your message', !!s.repair, s.repair ? 'Finish or cancel the correction first.' : undefined), c('undo', 'Undo', !(s.repair ? s.repair.undo.length : s.undo.length)),
       c('reader', 'Read message', !s.draft), c('settings', 'Settings'), c('clear', 'New message', !s.draft), c('pause', 'Pause scanning'), back()];
     case 'settings': return [c('value:pace', 'Scan pace', false, `${s.settings.pace / 1000} seconds`),
-      c('value:size', 'Text size', false, `${s.settings.size}%`), c('voices', 'Voice', false, s.voices.find(x => x.id === s.settings.voice)?.name ?? 'Choose a voice'),
-      c('value:rate', 'Speech rate', false, `${s.settings.rate}×`), c('preview', 'Preview voice', !s.settings.voice), back(), more()];
-    case 'values': return [...(screen.value === 'pace' ? [800, 1200, 1600, 2000, 3000] : screen.value === 'size' ? [100, 125, 150, 200] : [0.75, 1, 1.25])
+      c('value:size', 'Text size', false, `${s.settings.size}%`), c('voices', 'Voice', false, (s.settings.provider === 'elevenlabs' ? s.cloud.voices : s.voices).find(x => x.id === s.settings.voice)?.name ?? 'Choose a voice'),
+      c('value:rate', 'Speech rate', false, `${s.settings.rate}×`), c('preview', 'Preview voice', !speechAvailable(s)), back(), more()];
+    case 'values': return [...(screen.value === 'pace' ? [800, 1200, 1600, 2000, 3000] : screen.value === 'size' ? [100, 125, 150, 200] : s.settings.provider === 'elevenlabs' ? [0.75, 1, 1.2] : [0.75, 1, 1.25])
       .map(x => c(`set:${x}`, screen.value === 'pace' ? `${x / 1000} seconds` : screen.value === 'size' ? `${x}%` : `${x}×`)), back()];
-    case 'voices': return [...s.voices.slice(page * 5, page * 5 + 5).map((x, i) => c(`voice:${i + page * 5}`, x.name, false, `${x.lang} · ${x.local ? 'Device voice — offline not verified' : 'May use network'}`)),
+    case 'voices': return [c('premium-voices', 'ElevenLabs voices', false, 'Six selected voices'), ...s.voices.slice(page * 5, page * 5 + 5).map((x, i) => c(`voice:${i + page * 5}`, x.name, false, (s.settings.provider === 'browser' && s.settings.voice === x.id ? 'Selected · ' : '') + `${x.lang} · ${x.local ? 'Device voice — offline not verified' : 'May use network'}`)),
       c('next', 'Next voices', (page + 1) * 5 >= s.voices.length), c('previous', 'Previous voices', page === 0), back()];
+    case 'premium-voices': return [...s.cloud.voices.map((v, i) => c(`premium:${i}`, v.name, !v.available || !s.cloud.elevenlabs || !s.cloud.consent,
+      `${s.settings.provider === 'elevenlabs' && s.settings.voice === v.id ? 'Selected · ' : ''}${v.group} · ${v.description} · ${!v.available ? v.reason : !s.cloud.consent ? 'Enable fictional cloud demo in Companion setup' : !s.cloud.elevenlabs ? s.cloud.elevenReason : 'Ready for deliberate preview'}`)),
+      c('voices', 'System voices'), back()];
+    case 'assist': return [c('assist-context', 'Suggest a reply', !s.cloud.gemini || !s.cloud.consent, 'Choose a fictional question'),
+      c('assist-spelling', 'Check spelling', !s.cloud.gemini || !s.cloud.consent || !s.draft.trim()),
+      c('assist-wording', 'Suggest clearer wording', !s.cloud.gemini || !s.cloud.consent || !s.draft.trim()),
+      c('spell', 'Continue spelling'), c('phrases', 'Choose a phrase'), back()];
+    case 'assist-context': return fictionalContexts.map((text, i) => c(`context:${i}`, text)).concat([back()]);
+    case 'suggestions': return [...s.assistance.items.map((item, i) => c(`suggestion:${i}`, item.text, false, s.draft ? 'Optional suggestion · replaces draft; Undo is available' : 'Optional suggestion · editable before review')),
+      c('reject-suggestions', s.assistance.state === 'loading' ? 'Cancel request' : 'Reject all'), c('spell', 'Continue spelling'), c('phrases', 'Choose a phrase')];
     case 'reader': return [c('next', 'Next part', !s.review || page + 1 >= s.review.pages.length), c('previous', 'Previous part', page === 0), back(), c('pause', 'Pause scanning')];
     case 'clear': return [c('back', 'Keep message'), c('confirm-clear', 'Clear message')];
     case 'paused': return [c('resume', 'Resume scanning')];
     case 'speaking': return [c('stop', s.authorization?.preview ? 'Stop preview' : 'Stop speaking')];
     case 'complete': return [c('review', 'Review again'), c('edit', 'Edit wording'), c('clear', 'New message')];
-    case 'speech-error': return [c('review', 'Back to review'), c('voices', 'Choose voice'), more()];
+    case 'speech-error': return [...(s.settings.provider === 'elevenlabs' ? [c('fallback', 'Speak using system voice', !s.voices.length, 'Review again, then approve with a fresh cycle.')] : []), c('review', 'Back to review'), c('voices', 'Choose voice'), more()];
   }
 }
 export function title(s: Model): string {
   const names: Record<Screen['name'], string> = { compose: 'Make your message', categories: 'Choose a category', phrases: s.screen.value ?? 'Phrases',
     keyboard: s.repair ? 'Correct this word' : 'Spell your message', repair: 'Choose a word to correct', review: 'Review before speaking', more: 'More controls',
-    settings: 'Your settings', values: `Choose ${s.screen.value}`, voices: 'Choose a voice', reader: 'Read your message', clear: 'Start a new message?',
+    settings: 'Your settings', values: `Choose ${s.screen.value}`, voices: 'System voices', 'premium-voices': 'ElevenLabs voices', assist: 'Optional suggestions', 'assist-context': 'Fictional conversation', suggestions: 'Suggestions', reader: 'Read your message', clear: 'Start a new message?',
     paused: 'Scanning paused', speaking: s.authorization?.preview ? 'Voice preview' : 'Your approved message', complete: 'Message playback ended', 'speech-error': 'Speech stopped' };
   return names[s.screen.name];
 }
@@ -179,6 +192,19 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id.startsWith('phrase:')) { editDraft(s, s.draft + phraseList(s.screen.value!)![Number(id.slice(7))]); s.provenance = 'Your words'; home(s); }
   else if (id === 'spell') { s.repair = null; go(s, { name: 'keyboard', value: 'rows' }); }
   else if (id === 'review') startReview(s);
+  else if (id === 'assist') go(s, { name: 'assist' });
+  else if (id === 'assist-context') go(s, { name: 'assist-context' });
+  else if (id === 'assist-spelling' || id === 'assist-wording' || id.startsWith('context:')) {
+    if (!s.cloud.consent || !s.cloud.gemini) return before;
+    const kind = id === 'assist-spelling' ? 'spelling_correction' : id === 'assist-wording' ? 'wording_alternative' : 'contextual_response';
+    s.assistance = { request: { id: `${s.session}:${++s.serial}`, text: s.draft, context: id.startsWith('context:') ? fictionalContexts[Number(id.slice(8))] : '', kind, synthetic: true },
+      revision: s.revision, state: 'loading', items: [], error: '' };
+    go(s, { name: 'suggestions' });
+  } else if (id.startsWith('suggestion:')) {
+    const selected = s.assistance.items[Number(id.slice(11))];
+    if (!selected || s.assistance.revision !== s.revision) return before;
+    editDraft(s, selected.text); s.provenance = 'Suggestion selected'; s.assistance.request = null; s.assistance.items = []; home(s);
+  } else if (id === 'reject-suggestions') { s.assistance.request = null; s.assistance.items = []; s.assistance.state = 'idle'; home(s); }
   else if (id === 'reader') startReview(s, 'reader');
   else if (id === 'edit') go(s, { name: 'repair', page: 0 });
   else if (id.startsWith('word:')) {
@@ -223,13 +249,27 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
     if (key === 'size') s.review = null;
     pop(s);
     if (key === 'size') { go(s, { name: 'paused' }); s.notice = 'Text size changed. Resume when ready.'; }
-  } else if (id === 'voices') go(s, { name: 'voices', page: 0 });
-  else if (id.startsWith('voice:')) { s.settings.voice = s.voices[Number(id.slice(6))].id; pop(s); }
+  } else if (id === 'premium-voices') go(s, { name: 'premium-voices' });
+  else if (id === 'voices') go(s, { name: 'voices', page: 0 });
+  else if (id.startsWith('voice:')) { s.settings.voice = s.voices[Number(id.slice(6))].id; s.settings.systemVoice = s.settings.voice; s.settings.provider = 'browser'; pop(s); }
+  else if (id.startsWith('premium:')) {
+    const voice = s.cloud.voices[Number(id.slice(8))];
+    if (!voice?.available || !s.cloud.elevenlabs || !s.cloud.consent) return before;
+    if (s.settings.provider === 'browser') s.settings.systemVoice = s.settings.voice;
+    s.settings.provider = 'elevenlabs'; s.settings.voice = voice.id;
+    if (![0.75, 1, 1.2].includes(s.settings.rate)) { s.settings.rate = 1; s.notice = 'Voice selected. Speech rate set to 1× for this provider.'; }
+    // Return directly to the existing settings actions, including explicit Preview.
+    s.screen = { name: 'settings' }; s.stack = s.stack.filter(x => x.name !== 'voices' && x.name !== 'premium-voices');
+  } else if (id === 'fallback') {
+    s.settings.provider = 'browser'; s.settings.voice = s.voices.find(v => v.id === s.settings.systemVoice)?.id ?? s.voices[0]?.id ?? '';
+    startReview(s); s.notice = 'System voice selected. Review and approve again.';
+  }
   else if (id === 'speak' || id === 'preview') {
-    s.authorization = Object.freeze({ id: `${s.session}:${++s.serial}`, text: id === 'preview' ? 'This is the selected voice.' : s.draft,
+    s.authorization = Object.freeze({ id: `${s.session}:${++s.serial}`, text: id === 'preview' ? PREVIEW_TEXT : s.draft,
       revision: s.revision, voice: s.settings.voice, rate: s.settings.rate, provider: s.settings.provider, preview: id === 'preview' });
     s.speech = 'Preparing'; go(s, { name: 'speaking' });
   } else if (id === 'stop') { s.authorization = null; s.speech = 'Stopped'; pop(s); }
+  if (s.screen.name !== 'suggestions') s.assistance.request = null;
   return s;
 }
 export function speechEvent(before: Model, id: string, event: 'start' | 'end' | 'error'): Model {
@@ -246,6 +286,7 @@ export function speechEvent(before: Model, id: string, event: 'start' | 'end' | 
 /** An interruption is never navigation, a release, a resume or speech approval. */
 export function interrupt(before: Model, reason: string): Model {
   const s = structuredClone(before); s.uiRevision++; s.notice = reason;
+  if (s.assistance?.request) { s.assistance.request = null; s.assistance.state = 'failed'; s.assistance.error = 'Request canceled. Your words are kept.'; }
   if (reason.startsWith('Layout changed')) s.review = null;
   if (s.authorization) { s.authorization = null; s.speech = 'Stopped'; pop(s); }
   if (s.screen.name !== 'paused') go(s, { name: 'paused' });
@@ -254,5 +295,16 @@ export function interrupt(before: Model, reason: string): Model {
 /** Fast refresh may retain React state while replacing controllers. Authored
  * state may survive; an old playback permission must never cross that boundary. */
 export function retireRuntimeAuthorization(before: Model): Model {
-  return before.authorization ? interrupt(before, 'Workspace restarted — speech approval canceled') : before;
+  return before.authorization || before.assistance?.request ? interrupt(before, 'Workspace restarted — speech approval canceled') : before;
+}
+
+export const fictionalContexts = ['Are you uncomfortable?', 'Would you like to change position?', 'Can I help?'] as const;
+/** Upgrade retained development state without clearing an existing private draft. */
+export function withCloudDefaults(before: Model): Model {
+  return before.cloud && before.assistance ? before : { ...before, cloud: initialCloud(), assistance: { request: null, revision: before.revision, state: 'idle', items: [], error: '' } };
+}
+export function finishAssistance(before: Model, request: AssistRequest, items: Suggestion[], error = ''): Model {
+  if (before.screen.name !== 'suggestions' || before.assistance.request?.id !== request.id || before.revision !== before.assistance.revision
+    || before.draft !== request.text || !before.cloud.consent) return before;
+  return { ...before, uiRevision: before.uiRevision + 1, assistance: { ...before.assistance, request: null, state: error ? 'failed' : 'ready', items: error ? [] : items, error } };
 }

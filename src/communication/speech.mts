@@ -4,6 +4,11 @@ export interface SpeechEngine {
   speak(auth: Authorization, event: (event: 'start' | 'end' | 'error') => void): void;
   cancel(): void;
 }
+/** Routing is fixed by the immutable approval, never by an async provider response. */
+export function routeSpeechEngine(local: SpeechEngine, premium: SpeechEngine): SpeechEngine {
+  return { voices: () => local.voices(), cancel: () => { local.cancel(); premium.cancel(); },
+    speak: (auth, event) => (auth.provider === 'browser' ? local : premium).speak(auth, event) };
+}
 /** One-use authorization guard. Late callbacks can neither restart nor complete a newer operation. */
 export class SpeechController {
   private active: string | null = null;

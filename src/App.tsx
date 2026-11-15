@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, speechEvent, title, type Model, type Choice } from './communication/model.mts';
+import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, withCloudDefaults, speechEvent, title, type Model, type Choice } from './communication/model.mts';
 import { InputCoordinator } from './communication/input-coordinator.mts';
-import { browserSpeechEngine, SpeechController } from './communication/speech.mts';
+import { browserSpeechEngine, routeSpeechEngine, SpeechController } from './communication/speech.mts';
 import { measureReviewPages } from './communication/review-layout.mts';
 import { recoveryMessage } from './communication/recovery.mts';
+import { CloudRuntime } from './communication/CloudRuntime';
+import { browserPremiumSpeechEngine } from './communication/premium-speech.mts';
 import { ChoiceButton } from './communication/ChoiceButton';
 import { fullyVisible, revealInPanel } from './communication/view-layout.mts';
 import type { SerialChooser } from './input/web-serial-adapter.mts';
@@ -11,8 +13,10 @@ import type { SwitchState } from './input/switch-machine.mts';
 
 const active = () => document.hasFocus() && document.visibilityState === 'visible';
 export function App() {
-  const [model, render] = useState(() => initialModel(crypto.randomUUID()));
+  const [storedModel, render] = useState(() => initialModel(crypto.randomUUID()));
+  const model = withCloudDefaults(storedModel);
   const current = useRef(model);
+  current.current = model;
   const coordinator = useRef<InputCoordinator | null>(null);
   const speech = useRef<SpeechController | null>(null);
   const [input, setInput] = useState<SwitchState | null>(null);
@@ -66,14 +70,14 @@ export function App() {
     const synth = window.speechSynthesis;
     if (synth) {
       const engine = browserSpeechEngine(synth);
-      speech.current = new SpeechController(engine);
+      speech.current = new SpeechController(routeSpeechEngine(engine, browserPremiumSpeechEngine()));
       const voicesChanged = () => {
         if (controller.state.phase === 'held' || current.current.authorization) return;
         const voices = engine.voices();
         const before = current.current;
         if (JSON.stringify(before.voices) === JSON.stringify(voices)) return;
-        const voice = before.settings.voice || voices.find(v => v.local && v.lang.startsWith('en'))?.id || voices[0]?.id || '';
-        commit({ ...before, voices, uiRevision: before.uiRevision + 1, settings: { ...before.settings, voice } });
+        const voice = (before.settings.provider === 'browser' ? before.settings.voice : before.settings.systemVoice) || voices.find(v => v.local && v.lang.startsWith('en'))?.id || voices[0]?.id || '';
+        commit({ ...before, voices, uiRevision: before.uiRevision + 1, settings: { ...before.settings, systemVoice: voice, voice: before.settings.provider === 'browser' ? voice : before.settings.voice } });
       };
       voiceUpdate.current = voicesChanged;
       synth.addEventListener('voiceschanged', voicesChanged); voicesChanged();
@@ -81,7 +85,7 @@ export function App() {
     const blur = () => {
       // The native permission picker can temporarily blur before port opening.
       // The accepted adapter guards opening and every post-open focus loss.
-      if (controller.state.connected || controller.mode === 'simulation' || current.current.authorization) controller.suspend('Focus lost — communication preserved');
+      if (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request) controller.suspend('Focus lost — communication preserved');
     };
     const focus = () => { if (active() && !setup.current?.open) void controller.foreground(); };
     const visibility = () => { if (document.visibilityState !== 'visible') controller.suspend('Page hidden — communication preserved'); else focus(); };
@@ -106,7 +110,7 @@ export function App() {
       }
       // Some browser-chrome transitions do not deliver a window blur. This also
       // covers companion-approved pending/playing speech without a serial poll.
-      if (!(focused && visible) && (controller.state.connected || controller.mode === 'simulation' || current.current.authorization)) controller.suspend('Inactive page — communication preserved');
+      if (!(focused && visible) && (controller.state.connected || controller.mode === 'simulation' || current.current.authorization || current.current.assistance.request)) controller.suspend('Inactive page — communication preserved');
     };
     const activityTimer = setInterval(checkActivity, 25); checkActivity();
     window.addEventListener('blur', blur); window.addEventListener('focus', focus); window.addEventListener('resize', resize); window.addEventListener('pagehide', unload);
@@ -193,7 +197,7 @@ export function App() {
       if (current.current.authorization?.id === auth.id && current.current.speech === 'Preparing') {
         speech.current?.cancel(); commit(speechEvent(current.current, auth.id, 'error'));
       }
-    }, 8000);
+    }, auth.provider === 'elevenlabs' ? 16000 : 8000);
     return () => { clearTimeout(timeout); startPending.current = null; };
   }, [model.authorization?.id]);
   useEffect(() => { if (scanning) startPending.current?.(); }, [scanning, input?.epoch]);
@@ -243,6 +247,7 @@ export function App() {
     onKeyDownCapture={event => {
       if (event.key === 'Tab' && coordinator.current?.mode !== 'none') coordinator.current?.stop('Keyboard navigation — scan paused');
     }}>
+    <CloudRuntime model={model} current={current} commit={commit} canUpdate={() => coordinator.current?.state.phase !== 'held' && !coordinator.current?.busy && !current.current.authorization} />
     <header className="masthead"><div className="wordmark" aria-label="SMV — Still My Voice">SMV</div>
       <div><p className="product-name">Still My Voice</p><p className="tagline">Communication, on your terms.</p></div>
       <span className="prototype">Non-clinical prototype</span></header>
@@ -277,6 +282,9 @@ export function App() {
           {model.screen.name === 'paused' && !(scanning || held) ? <div className="recovery-row" role="status"><p>{recovery.guidance}</p>
             {recovery.setup ? <button type="button" className="compact-control" onClick={openSetup}>Companion setup</button> : null}</div>
             : model.notice && model.screen.name !== 'paused' ? <p className="notice" role="status">{model.notice}</p> : null}
+          {model.screen.name === 'assist' ? <p className="notice">{!model.cloud.consent ? 'Fictional demo only. A companion can enable cloud use in setup.' : !model.cloud.gemini ? model.cloud.geminiReason : 'Optional Gemini suggestions. Nothing changes until you choose.'}</p> : null}
+          {model.screen.name === 'suggestions' ? <p className="notice" role="status">{model.assistance.state === 'loading' ? 'Preparing suggestions… Your words are kept.' : model.assistance.error || (model.assistance.items.length ? 'Suggestions may be wrong. Choose only wording you intend.' : 'No reliable suggestions. Continue with your own wording.')}</p> : null}
+          {model.screen.name === 'speech-error' ? <p className="notice" role="status">Speech could not finish. Your message is kept.</p> : null}
           <div className="choices" data-grid={model.screen.name === 'phrases' || model.screen.name === 'keyboard' || model.screen.name === 'repair'}>
             {sections.primary.map(renderChoice)}
           </div>
@@ -309,6 +317,14 @@ export function App() {
         });
       }}>Connect Pico</button>
         <button type="button" onClick={() => coordinator.current?.stop('Explicit disconnect')}>Pause / disconnect Pico</button></div>
+      <h3>Optional cloud demo</h3>
+      <label><input type="checkbox" checked={model.cloud.consent} onChange={event => {
+        speech.current?.cancel(); const before = current.current;
+        commit({ ...before, uiRevision: before.uiRevision + 1, authorization: null,
+          cloud: { ...before.cloud, consent: event.target.checked }, assistance: { ...before.assistance, request: null, items: [] } });
+      }} /> I am using fictional content and permit deliberate speech/suggestion requests to ElevenLabs and Google. No real private communication.</label>
+      <p>ElevenLabs: {model.cloud.elevenReason}. Gemini: {model.cloud.geminiReason}. Selecting a voice or suggestion never starts speech.</p>
+      <button type="button" onClick={() => { const before = current.current; commit({ ...before, cloud: { ...before.cloud, refresh: (before.cloud.refresh ?? 0) + 1 } }); }}>Refresh cloud status</button>
       <h3>Local simulation</h3><p>Simulation uses the same selection safeguards. It is not physical test evidence.</p>
       <button type="button" disabled={coordinator.current?.mode === 'hardware' || coordinator.current?.busy} onClick={() => {
         setup.current?.close(); coordinator.current?.simulate(); requestAnimationFrame(() => simButton.current?.focus());
