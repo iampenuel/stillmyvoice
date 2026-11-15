@@ -113,6 +113,6 @@ test('real cookie verification and issued quota receipts reach the existing prov
 
 test('Vercel catch-all routing accepts only its exact path-derived parameter', async () => {
  const handler=createPublicDemoHandler({});
- for (const suffix of ['','?route=demo-access']) assert.equal((await handler(new Request(origin+'/api/demo-access'+suffix))).status,200);
+ for (const suffix of ['','?route=demo-access','?...route=demo-access','?[...route]=demo-access']) assert.equal((await handler(new Request(origin+'/api/demo-access'+suffix))).status,200);
  for (const suffix of ['?route=speech','?route=demo-access&route=demo-access','?text=private','?route=demo-access&text=private']) assert.equal((await handler(new Request(origin+'/api/demo-access'+suffix))).status,400);
 });

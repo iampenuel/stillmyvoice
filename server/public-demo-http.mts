@@ -74,8 +74,9 @@ export function createPublicDemoHandler(env: Record<string, string | undefined>,
       const url = new URL(request.url), origin = request.headers.get('origin');
       if (!origins.has(url.origin) || (request.headers.has('host') && request.headers.get('host') !== url.host)) throw new ProviderError('PUBLIC_HOST_REQUIRED', 403);
       // Vercel's [...route] adapter appends this exact path-derived routing value.
-      const routingOnly = [...url.searchParams].length === 1 && url.searchParams.get('route') === url.pathname.slice('/api/'.length);
-      if (url.search && !routingOnly) return json({ error: 'QUERY_PARAMETERS_NOT_ALLOWED', routing: [...url.searchParams].map(([key,value]) => ({ key: /^[a-zA-Z_-]{1,40}$/.test(key) ? key : 'other', matchesPath: value === url.pathname, matchesTail: value === url.pathname.slice('/api/'.length), matchesWithoutSlash: value === url.pathname.slice(1), length: value.length })), path: url.pathname }, 400);
+      const routeEntries = [...url.searchParams];
+      const routingOnly = routeEntries.length === 1 && ['route', '...route', '[...route]'].includes(routeEntries[0][0]) && routeEntries[0][1] === url.pathname.slice('/api/'.length);
+      if (url.search && !routingOnly) throw new ProviderError('QUERY_PARAMETERS_NOT_ALLOWED', 400);
       if (request.headers.get('sec-fetch-site') === 'cross-site' || (origin !== null && origin !== url.origin)
         || (request.method !== 'GET' && origin !== url.origin)) throw new ProviderError('SAME_ORIGIN_REQUIRED', 403);
       if (!['GET', 'POST', 'DELETE'].includes(request.method)) throw new ProviderError('METHOD_NOT_ALLOWED', 405);
