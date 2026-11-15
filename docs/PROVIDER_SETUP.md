@@ -31,9 +31,9 @@ Exact IDs and names are maintained in `src/communication/cloud-contract.mts`. Di
 | LaSean Pickens | `bQxW1c7YCr6VQgQhw8KX` | Unavailable: API reports failed Flash v2.5 tuning |
 | Eric — Smooth, Trustworthy | `cjVigY5qzO86Huf0OWal` | Metadata verified; audition pending |
 
-No voice substitution or alternative-model selection occurred. Metadata compatibility does not establish audible pronunciation. LaSean remains visible but disabled pending a reviewed compatible-model decision.
+No voice substitution or alternative-model selection occurred. Metadata compatibility does not establish audible pronunciation. LaSean remains inspectable with Preview and Use disabled pending a reviewed compatible-model decision.
 
-Choosing a voice is silent. Preview deliberately authorizes only “This is the selected voice.” Message speech captures the exact reviewed text, revision, voice, rate and unique one-use authorization. The provider receives the exact text with normalization off. Audio is bounded and collected before playback. Stop/focus loss/edit/cancellation invalidates the authorization, aborts work and releases playback resources; late audio cannot start. Failed premium speech offers system voice, returns to silent review and requires another approval. No automatic retry, queue or fallback.
+Opening voice details is silent and does not change the saved voice. Preview is the first scanned action; Use this voice separately confirms the choice. Preview deliberately authorizes only “This is the selected voice.” Message speech captures the exact reviewed text, revision, voice, rate and unique one-use authorization. The provider receives the exact text with normalization off. Audio is bounded and collected before playback. Stop/focus loss/edit/cancellation invalidates the authorization, aborts work and releases playback resources; late audio cannot start. Failed premium speech offers system voice, returns to silent review and requires another approval. No automatic retry, queue or fallback.
 
 Limits per API process: 10,000 submitted characters, 100 distinct speech approvals, one synthesis in flight, 12-second provider timeout, 8 MiB audio. Failed/uncertain submissions still consume the local budget. Restart resets these counters; it is not permission to consume repeated budgets.
 
@@ -59,3 +59,8 @@ The conservative lexical validator rejects altered negations, directions, order 
 [ElevenLabs voices API](https://elevenlabs.io/docs/api-reference/voices/search), [speech API](https://elevenlabs.io/docs/api-reference/text-to-speech/stream), [models](https://elevenlabs.io/docs/overview/models); [Gemini pricing](https://aistudio.google.com/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [official SDK](https://googleapis.github.io/js-genai/). Account conditions above came from the actual project dashboards, not pricing-page assumptions.
 
 The owner's Sema, Alethia and Our Ground boundaries informed server separation, bounded data and sanitized errors; no repositories were merged or product logic copied. Their broader retries, agents and schemas were not imported.
+
+
+### Voice workflow follow-up
+
+The owner reports hearing Cecily during the first physical cloud test. The requested compact voice-detail workflow is now implemented, with developer browser checks on Cecily and Eric, including live preview completion and Stop during active Eric playback. Detailed evidence and pending physical acceptance are in [UX-VOICE-01](HP26_UX_VOICE_01.md). This does not mark the remaining physical speech/Stop/Gemini script passed.

@@ -31,11 +31,11 @@ test('voice metadata paginates without synthesis or synthesis billing permission
 test('premium selection is silent, preview is fixed, failed speech fallback needs new complete review and approval', () => {
   let s = model(); const draft = s.draft;
   s = step(step(step(step(s, 'more'), 'settings'), 'voices'), 'premium-voices'); s = step(s, 'premium:0');
-  assert.equal(s.authorization, null); assert.equal(s.settings.provider, 'elevenlabs');
+  assert.equal(s.authorization, null); assert.equal(s.settings.provider, 'browser');
   s = step(s, 'preview'); assert.equal(s.authorization?.text, PREVIEW_TEXT); assert.equal(s.draft, draft);
-  s = speechEvent(s, s.authorization!.id, 'end'); s = step(step(s, 'more'), 'home');
+  s = speechEvent(s, s.authorization!.id, 'end'); s = step(s, 'use-voice');
   s = step(s, 'review'); s = presented(s, s.revision, 0); s = step(s, 'speak');
-  const old = s.authorization!; assert.equal(old.voice, approvedVoices[0].id); assert.equal(old.text, draft);
+  const old = s.authorization!; assert.equal(s.speechPreview, false); assert.equal(old.voice, approvedVoices[0].id); assert.equal(old.text, draft);
   s = speechEvent(s, old.id, 'error'); s = step(s, 'fallback');
   assert.equal(s.authorization, null); assert.equal(s.settings.provider, 'browser'); assert.equal(s.draft, draft);
   assert.equal(choose(s, 'speak', s.uiRevision), s); s = presented(s, s.revision, 0); s = step(s, 'speak');

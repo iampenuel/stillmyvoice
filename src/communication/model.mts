@@ -8,7 +8,7 @@ export type Authorization = Readonly<{
 export type Choice = Readonly<{ id: string; label: string; detail?: string; disabled?: boolean }>;
 export type Screen = {
   name: 'compose' | 'categories' | 'phrases' | 'keyboard' | 'repair' | 'review' | 'more'
-    | 'settings' | 'values' | 'voices' | 'premium-voices' | 'assist' | 'assist-context' | 'suggestions' | 'reader' | 'clear' | 'paused' | 'speaking' | 'complete' | 'speech-error';
+    | 'settings' | 'values' | 'voices' | 'premium-voices' | 'voice-detail' | 'assist' | 'assist-context' | 'suggestions' | 'reader' | 'clear' | 'paused' | 'speaking' | 'complete' | 'speech-error';
   value?: string; page?: number;
 };
 type Repair = { start: number; end: number; revision: number; buffer: string; undo: string[]; upper: boolean; deleteRequested: boolean };
@@ -22,7 +22,7 @@ export type Model = {
   cloud: CloudState; assistance: { request: AssistRequest | null; revision: number; state: 'idle' | 'loading' | 'ready' | 'failed'; items: Suggestion[]; error: string };
   voices: Voice[]; authorization: Authorization | null;
   speech: 'Not spoken' | 'Awaiting approval' | 'Preparing' | 'Speaking' | 'Stopped' | 'Playback finished' | 'Speech failed';
-  lastPlayed: string | null; serial: number; session: string;
+  lastPlayed: string | null; speechPreview?: boolean; serial: number; session: string;
 };
 export const phrases: Record<string, readonly string[]> = {
   Essentials: ['I need help.', 'Please stop.', 'Yes.', 'No.'],
@@ -34,6 +34,8 @@ export const quickPhrases = ['Please stop.', 'I need help.', 'Please reposition 
 const phraseList = (category: string) => category === 'Quick phrases' ? quickPhrases : phrases[category];
 const c = (id: string, label: string, disabled = false, detail?: string): Choice => ({ id, label, disabled, detail });
 const speechAvailable = (s: Model) => !!s.settings.voice && (s.settings.provider === 'browser' || (s.cloud.consent && s.cloud.elevenlabs && s.cloud.voices.some(v => v.id === s.settings.voice && v.available)));
+export const candidateVoice = (s: Model) => s.screen.name === 'voice-detail' ? s.cloud.voices.find(v => v.id === s.screen.value) : undefined;
+const candidateAvailable = (s: Model) => !!candidateVoice(s)?.available && s.cloud.consent && s.cloud.elevenlabs;
 const back = () => c('back', 'Back');
 const more = () => c('more', 'More controls');
 export function initialModel(session: string): Model {
@@ -107,9 +109,11 @@ export function choices(s: Model): Choice[] {
       .map(x => c(`set:${x}`, screen.value === 'pace' ? `${x / 1000} seconds` : screen.value === 'size' ? `${x}%` : `${x}×`)), back()];
     case 'voices': return [c('premium-voices', 'ElevenLabs voices', false, 'Six selected voices'), ...s.voices.slice(page * 5, page * 5 + 5).map((x, i) => c(`voice:${i + page * 5}`, x.name, false, (s.settings.provider === 'browser' && s.settings.voice === x.id ? 'Selected · ' : '') + `${x.lang} · ${x.local ? 'Device voice — offline not verified' : 'May use network'}`)),
       c('next', 'Next voices', (page + 1) * 5 >= s.voices.length), c('previous', 'Previous voices', page === 0), back()];
-    case 'premium-voices': return [...s.cloud.voices.map((v, i) => c(`premium:${i}`, v.name, !v.available || !s.cloud.elevenlabs || !s.cloud.consent,
+    case 'premium-voices': return [...s.cloud.voices.map((v, i) => c(`premium:${i}`, v.name, false,
       `${s.settings.provider === 'elevenlabs' && s.settings.voice === v.id ? 'Selected · ' : ''}${v.group} · ${v.description} · ${!v.available ? v.reason : !s.cloud.consent ? 'Enable fictional cloud demo in Companion setup' : !s.cloud.elevenlabs ? s.cloud.elevenReason : 'Ready for deliberate preview'}`)),
       c('voices', 'System voices'), back()];
+    case 'voice-detail': return [c('preview', 'Preview voice', !candidateAvailable(s)),
+      c('use-voice', 'Use this voice', !candidateAvailable(s)), c('back-to-voices', 'Back to voices')];
     case 'assist': return [c('assist-context', 'Suggest a reply', !s.cloud.gemini || !s.cloud.consent, 'Choose a fictional question'),
       c('assist-spelling', 'Check spelling', !s.cloud.gemini || !s.cloud.consent || !s.draft.trim()),
       c('assist-wording', 'Suggest clearer wording', !s.cloud.gemini || !s.cloud.consent || !s.draft.trim()),
@@ -128,7 +132,7 @@ export function choices(s: Model): Choice[] {
 export function title(s: Model): string {
   const names: Record<Screen['name'], string> = { compose: 'Make your message', categories: 'Choose a category', phrases: s.screen.value ?? 'Phrases',
     keyboard: s.repair ? 'Correct this word' : 'Spell your message', repair: 'Choose a word to correct', review: 'Review before speaking', more: 'More controls',
-    settings: 'Your settings', values: `Choose ${s.screen.value}`, voices: 'System voices', 'premium-voices': 'ElevenLabs voices', assist: 'Optional suggestions', 'assist-context': 'Fictional conversation', suggestions: 'Suggestions', reader: 'Read your message', clear: 'Start a new message?',
+    settings: 'Your settings', values: `Choose ${s.screen.value}`, voices: 'System voices', 'premium-voices': 'ElevenLabs voices', 'voice-detail': candidateVoice(s)?.name ?? 'Voice unavailable', assist: 'Optional suggestions', 'assist-context': 'Fictional conversation', suggestions: 'Suggestions', reader: 'Read your message', clear: 'Start a new message?',
     paused: 'Scanning paused', speaking: s.authorization?.preview ? 'Voice preview' : 'Your approved message', complete: 'Message playback ended', 'speech-error': 'Speech stopped' };
   return names[s.screen.name];
 }
@@ -145,7 +149,7 @@ function editDraft(s: Model, text: string) {
   if (text === s.draft) return;
   if (text.length > 4096) { s.notice = 'Message limit reached (4,096 characters). Your existing words are kept.'; return; }
   s.undo = [...s.undo.slice(-49), s.draft]; s.draft = text; s.revision++; s.review = null;
-  s.authorization = null; s.speech = 'Not spoken'; s.provenance = 'Your edited wording';
+  s.authorization = null; s.speech = 'Not spoken'; s.speechPreview = false; s.provenance = 'Your edited wording';
 }
 function editBuffer(s: Model, text: string) {
   if (!s.repair) return editDraft(s, text);
@@ -254,19 +258,28 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id.startsWith('voice:')) { s.settings.voice = s.voices[Number(id.slice(6))].id; s.settings.systemVoice = s.settings.voice; s.settings.provider = 'browser'; pop(s); }
   else if (id.startsWith('premium:')) {
     const voice = s.cloud.voices[Number(id.slice(8))];
+    if (!voice) return before;
+    go(s, { name: 'voice-detail', value: voice.id });
+  } else if (id === 'back-to-voices') { pop(s); }
+  else if (id === 'use-voice') {
+    const voice = candidateVoice(s);
     if (!voice?.available || !s.cloud.elevenlabs || !s.cloud.consent) return before;
     if (s.settings.provider === 'browser') s.settings.systemVoice = s.settings.voice;
     s.settings.provider = 'elevenlabs'; s.settings.voice = voice.id;
-    if (![0.75, 1, 1.2].includes(s.settings.rate)) { s.settings.rate = 1; s.notice = 'Voice selected. Speech rate set to 1× for this provider.'; }
-    // Return directly to the existing settings actions, including explicit Preview.
-    s.screen = { name: 'settings' }; s.stack = s.stack.filter(x => x.name !== 'voices' && x.name !== 'premium-voices');
+    const rateAdjusted = ![0.75, 1, 1.2].includes(s.settings.rate);
+    if (rateAdjusted) s.settings.rate = 1;
+    home(s); s.notice = `${voice.name} selected.${rateAdjusted ? ' Speech rate set to 1×.' : ''}`;
   } else if (id === 'fallback') {
     s.settings.provider = 'browser'; s.settings.voice = s.voices.find(v => v.id === s.settings.systemVoice)?.id ?? s.voices[0]?.id ?? '';
     startReview(s); s.notice = 'System voice selected. Review and approve again.';
   }
   else if (id === 'speak' || id === 'preview') {
+    const candidate = id === 'preview' ? candidateVoice(s) : undefined;
+    s.speechPreview = id === 'preview';
     s.authorization = Object.freeze({ id: `${s.session}:${++s.serial}`, text: id === 'preview' ? PREVIEW_TEXT : s.draft,
-      revision: s.revision, voice: s.settings.voice, rate: s.settings.rate, provider: s.settings.provider, preview: id === 'preview' });
+      revision: s.revision, voice: candidate?.id ?? s.settings.voice,
+      rate: candidate && ![0.75, 1, 1.2].includes(s.settings.rate) ? 1 : s.settings.rate,
+      provider: candidate ? 'elevenlabs' : s.settings.provider, preview: id === 'preview' });
     s.speech = 'Preparing'; go(s, { name: 'speaking' });
   } else if (id === 'stop') { s.authorization = null; s.speech = 'Stopped'; pop(s); }
   if (s.screen.name !== 'suggestions') s.assistance.request = null;

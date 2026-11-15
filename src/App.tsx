@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, withCloudDefaults, speechEvent, title, type Model, type Choice } from './communication/model.mts';
+import { choices, choiceSections, choose, initialModel, inputView, interrupt, presented, retireRuntimeAuthorization, withCloudDefaults, speechEvent, title, candidateVoice, type Model, type Choice } from './communication/model.mts';
 import { InputCoordinator } from './communication/input-coordinator.mts';
 import { browserSpeechEngine, routeSpeechEngine, SpeechController } from './communication/speech.mts';
 import { measureReviewPages } from './communication/review-layout.mts';
@@ -220,6 +220,9 @@ export function App() {
   const displayed = (model.screen.name === 'review' || model.screen.name === 'reader') && model.review
     ? model.review.pages[model.screen.page ?? 0] : model.draft;
   const sections = choiceSections(model);
+  const voiceCandidate = candidateVoice(model);
+  const playbackStatus = model.speechPreview ? ({ Preparing: 'Preparing voice preview', Speaking: 'Playing voice preview',
+    Stopped: 'Voice preview stopped', 'Playback finished': 'Voice preview finished', 'Speech failed': 'Voice preview failed' } as Record<string, string>)[model.speech] ?? model.speech : model.speech;
   const recovery = recoveryMessage(status, !!input?.connected, !!coordinator.current?.busy, input?.phase);
   const openSetup = () => {
     coordinator.current?.stop('Companion setup opened');
@@ -269,14 +272,14 @@ export function App() {
             <p className="small">Your message changes only when you choose Apply correction.</p></div> : null}
         </div>
         <div className="message-footer">
-          <p className="speech-state" aria-live="polite">{model.repair ? 'Correction not applied' : model.speech}</p>
+          <p className="speech-state" aria-live="polite">{model.repair ? 'Correction not applied' : playbackStatus}</p>
           {model.screen.name === 'review' ? <p className="small">Review every part. A new selection on Speak approves the exact full message.</p>
             : model.lastPlayed !== null && model.speech !== 'Playback finished' ? <p className="small">Previously played. New approval is required to speak again.</p> : null}
         </div>
       </section>
       <section className="interaction-panel" aria-labelledby="interaction-title">
         <div className="panel-heading"><h2 id="interaction-title" aria-live="polite">{model.screen.name === 'paused' ? 'Communication paused' : title(model)}</h2>
-          <span className="panel-caption">{model.screen.name === 'review' ? 'Your approval, your words.' : model.screen.name === 'speaking' ? 'Stop speaking cancels playback.' : 'One press and release to choose.'}</span>
+          <span className="panel-caption">{voiceCandidate ? voiceCandidate.description : model.screen.name === 'review' ? 'Your approval, your words.' : model.screen.name === 'speaking' ? 'Stop speaking cancels playback.' : 'One press and release to choose.'}</span>
         </div>
         <div ref={choiceRegion} className="interaction-scroll" tabIndex={0} aria-label="Communication choices">
           {model.screen.name === 'paused' && !(scanning || held) ? <div className="recovery-row" role="status"><p>{recovery.guidance}</p>
@@ -285,6 +288,7 @@ export function App() {
           {model.screen.name === 'assist' ? <p className="notice">{!model.cloud.consent ? 'Fictional demo only. A companion can enable cloud use in setup.' : !model.cloud.gemini ? model.cloud.geminiReason : 'Optional Gemini suggestions. Nothing changes until you choose.'}</p> : null}
           {model.screen.name === 'suggestions' ? <p className="notice" role="status">{model.assistance.state === 'loading' ? 'Preparing suggestions… Your words are kept.' : model.assistance.error || (model.assistance.items.length ? 'Suggestions may be wrong. Choose only wording you intend.' : 'No reliable suggestions. Continue with your own wording.')}</p> : null}
           {model.screen.name === 'speech-error' ? <p className="notice" role="status">Speech could not finish. Your message is kept.</p> : null}
+          {voiceCandidate && (!voiceCandidate.available || !model.cloud.consent || !model.cloud.elevenlabs) ? <p className="notice" role="status">{!voiceCandidate.available ? voiceCandidate.reason : !model.cloud.consent ? 'Enable fictional cloud demo in Companion setup to preview or use this voice.' : model.cloud.elevenReason}</p> : null}
           <div className="choices" data-grid={model.screen.name === 'phrases' || model.screen.name === 'keyboard' || model.screen.name === 'repair'}>
             {sections.primary.map(renderChoice)}
           </div>

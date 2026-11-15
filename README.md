@@ -33,7 +33,7 @@ ElevenLabs and direct Gemini are integrated behind server-only keys, verified lo
 
 SMV's application, deterministic input/session logic, exact-message review and authorization, correction workflow and provider boundaries were developed with owner direction and Codex assistance. Frameworks: React/React DOM 19.3.1 (MIT), Vite 8.3.8 and React plugin 6.3.0 (MIT), TypeScript 7.0.2 (Apache-2.0), Google Gen AI SDK 3.3.0 (Apache-2.0), and DefinitelyTyped definitions (MIT). Runtime/platform services: Node.js, Chromium Web Serial/Web Speech, Raspberry Pi Pico and Adafruit CircuitPython, ElevenLabs and Gemini. These are credited dependencies/services, not original SMV work. See [notices](THIRD_PARTY_NOTICES.md). No clinical benefit, AAC-user validation, general semantic safety or competition ranking is claimed.
 
-The official event requires a public code repository and accurate attribution. Event-window provenance and the required original-code proportion need owner confirmation; Git history has not been altered to claim compliance. [Release checklist and draft presentation](docs/RELEASE_READINESS.md) track unresolved publication and submission work.
+The official event requires a public code repository and accurate attribution. The approved 9983260 checkpoint is public at [iampenuel/stillmyvoice](https://github.com/iampenuel/stillmyvoice). The owner reports sole team membership, event registration/check-in and that 100% of their code was written during the event. This is owner-reported provenance, not an independent originality audit; Git history has not been altered. [Release checklist and draft presentation](docs/RELEASE_READINESS.md) track unresolved publication and submission work.
 
 ## Project references
 
