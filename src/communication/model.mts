@@ -60,7 +60,9 @@ export function inputView(model: Model) {
 const navigationIds = new Set(['back', 'more', 'review', 'done', 'resume', 'stop', 'pause', 'all-categories', 'row:navigation', 'row:rows', 'char: ', 'erase', 'context-set:general']);
 export function choiceSections(model: Model) {
   const list = choices(model);
-  return { primary: list.filter(x => !navigationIds.has(x.id)), navigation: list.filter(x => navigationIds.has(x.id)) };
+  const overview = model.screen.name === 'keyboard' && (model.screen.value ?? 'rows') === 'rows' && !model.repair && !model.expansion.editing;
+  const navigation = (id: string) => navigationIds.has(id) || (overview && id === 'row:editing');
+  return { primary: list.filter(x => !navigation(x.id)), navigation: list.filter(x => navigation(x.id)) };
 }
 export function words(text: string) {
   return [...text.matchAll(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)]
@@ -88,7 +90,7 @@ export function choices(s: Model): Choice[] {
     case 'keyboard': {
       const row = screen.value ?? 'rows';
       if (row === 'rows') return [c('row:abcde', 'A–E'), c('row:fghij', 'F–J'), c('row:klmno', 'K–O'),
-        c('row:pqrst', 'P–T'), c('row:uvwxyz', 'U–Z'), c('row:editing', 'Editing and controls'),
+        c('row:pqrst', 'P–T'), c('row:uvwxyz', 'U–Z'), c('row:editing', !s.repair && !s.expansion.editing ? 'Editing' : 'Editing and controls'),
         ...(s.repair ? [c('prefix:not', 'Add “do not ” before this word', false, `Stages: do not ${s.draft.slice(s.repair.start, s.repair.end)}`)] : []),
         c('done', s.expansion.editing ? 'Save candidate' : s.repair ? 'Apply correction' : 'Done', s.expansion.editing ? !s.expansion.buffer.trim() : !!s.repair && !s.repair.buffer && !s.repair.deleteRequested),
         c('char: ', 'Space'), c('erase', 'Backspace', !editingText(s)),
@@ -295,7 +297,7 @@ export function choose(before: Model, id: string, viewRevision: number): Model {
   else if (id.startsWith('premium:')) {
     const voice = s.cloud.voices[Number(id.slice(8))];
     if (!voice) return before;
-    s.authorization = null; s.speechPreview = false; s.speech = s.lastPlayed === s.draft ? 'Playback finished' : 'Not spoken';
+    s.authorization = null; s.speechPreview = false; s.speech = s.draft && s.lastPlayed === s.draft ? 'Playback finished' : 'Not spoken';
     go(s, { name: 'voice-detail', value: voice.id });
   } else if (id === 'back-to-voices') { pop(s); }
   else if (id === 'use-voice') {

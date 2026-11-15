@@ -79,6 +79,22 @@ summary { cursor: pointer; padding-block: 12px; font-weight: 600; }
   main:not([data-large-text="true"]) .interaction-scroll,
   main:not([data-large-text="true"]) .message-content { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; }
   main:not([data-large-text="true"]) .choices[data-grid="true"] { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  main:not([data-large-text="true"]) .interaction-scroll:is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) { gap: 12px; }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .choices,
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .navigation-choices { gap: 8px; }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .navigation-choices { padding-top: 8px; }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .target-envelope button { min-height: 64px; padding: 6px 12px; gap: 2px; }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .choice-label { font-size: calc(20px * var(--text-scale,1)); }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .navigation-choices button { min-height: 56px; padding-block: 4px; }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .navigation-choices .choice-label { font-size: calc(18px * var(--text-scale,1)); }
+}
+@media (min-width: 64rem) and (min-height: 42rem) and (max-height: 44rem) {
+  main:not([data-large-text="true"]) .interaction-scroll:is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) { gap: 8px; }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .target-envelope button { min-height: 56px; padding: 4px 10px; }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .choice-label { font-size: calc(18px * var(--text-scale,1)); }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .navigation-choices button { min-height: 52px; }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .navigation-choices .choice-label { font-size: calc(16px * var(--text-scale,1)); }
+  main:not([data-large-text="true"]) :is([data-keyboard-overview="true"],[data-keyboard-letters="true"]) .scan-label { line-height: 16px; min-height: 16px; }
 }
 @media (max-width: 40rem) {
   main { padding: 16px; gap: 16px; }

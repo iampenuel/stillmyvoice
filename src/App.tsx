@@ -282,7 +282,7 @@ export function App() {
         <div className="panel-heading"><h2 id="interaction-title" aria-live="polite">{model.screen.name === 'paused' ? 'Communication paused' : title(model)}</h2>
           <span className="panel-caption">{voiceCandidate ? voiceCandidate.description : model.screen.name === 'review' ? 'Your approval, your words.' : model.screen.name === 'speaking' ? 'Stop speaking cancels playback.' : 'One press and release to choose.'}</span>
         </div>
-        <div ref={choiceRegion} className="interaction-scroll" tabIndex={0} aria-label="Communication choices">
+        <div ref={choiceRegion} className="interaction-scroll" data-keyboard-overview={model.screen.name === 'keyboard' && (model.screen.value ?? 'rows') === 'rows' && !model.repair && !model.expansion.editing} data-keyboard-letters={model.screen.name === 'keyboard' && !model.repair && !model.expansion.editing && /^(abcde|fghij|klmno|pqrst|uvwxyz)$/.test(model.screen.value ?? '')} tabIndex={0} aria-label="Communication choices">
           {model.screen.name === 'paused' && !(scanning || held) ? <div className="recovery-row" role="status"><p>{recovery.guidance}</p>
             {recovery.setup ? <button type="button" className="compact-control" onClick={openSetup}>Companion setup</button> : null}</div>
             : model.notice && model.screen.name !== 'paused' ? <p className="notice" role="status">{model.notice}</p> : null}

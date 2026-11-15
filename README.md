@@ -27,7 +27,9 @@ npm run build
 
 Keep dependencies and the project npm cache (`.local-cache/npm`) on the external drive. The browser app binds to `127.0.0.1:5173`. Chrome port permission and independently verifying the dedicated CDC2 interface can require companion assistance. Native mouse/keyboard actions are labeled separately from hardware input. Browser speech is available independently of cloud services; offline behavior is unverified.
 
-ElevenLabs and direct Gemini are integrated behind server-only keys, verified local demo gates and explicit fictional-content consent. Run `npm run api` in a second terminal. Five of the six exact approved voices currently pass preferred-model metadata checks; LaSean is unavailable with Flash v2.5. Live Cecily browser playback and Gemini suggestions succeeded; physical cloud acceptance and human pronunciation checks remain pending. System speech remains independent. See [provider evidence and limits](docs/PROVIDER_SETUP.md). Do not use real private communication in the cloud demonstration.
+ElevenLabs and direct Gemini are integrated behind server-only keys, verified local demo gates and explicit fictional-content consent. Run `npm run api` in a second terminal. All six exact voices now pass their assigned-model checks; LaSean uses a verified English Flash v2 exception while the other five retain Flash v2.5. The owner confirmed Cecily preview and exact approved phrase playback. LaSean browser preview and live Gemini keyword expansion succeeded; new intent/LaSean physical acceptance remains pending. Optional context and Expand my words preserve authored keywords until deliberate candidate acceptance, silent review and a separate fresh Speak cycle. System speech remains independent. See [provider evidence and limits](docs/PROVIDER_SETUP.md). Do not use real private communication in the cloud demonstration.
+
+See [intent-first evidence](docs/HP26_INTENT_01.md) and [matched route comparison](docs/INTENT_EFFICIENCY.md). Abbreviated AAC expansion has established precedent in [SpeakFaster (Cai et al., 2024)](https://www.nature.com/articles/s41467-024-53873-3); SMV does not claim to have invented it. Modeled selection savings are distinct from measured physical speed.
 
 ## Credits and contributions
 
@@ -46,4 +48,4 @@ The official event requires a public code repository and accurate attribution. T
 - [Branding boundaries](docs/BRANDING.md): `stillmyvoice.club`, registered according to the owner, deployment unconfirmed; no production domain is configured.
 - [Third-party notices](THIRD_PARTY_NOTICES.md) and [local instruction registry](docs/SKILLS_REGISTRY.md)
 
-This prototype has no clinical validation or accessibility-conformance claim. It is not deployed or submitted. Optional transcription and gaze are deferred; physical cloud acceptance and public release remain unfinished. A successful build or synthetic test is not evidence of real physical or audible success.
+This prototype has no clinical validation or accessibility-conformance claim. It is not deployed or submitted. Optional transcription and gaze are deferred; new intent/LaSean physical acceptance and publication of the latest checkpoint remain unfinished. A successful build or synthetic test is not evidence of real physical or audible success.

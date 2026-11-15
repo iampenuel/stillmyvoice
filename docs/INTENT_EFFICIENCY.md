@@ -14,7 +14,7 @@ From this external repository, using the already installed Node 24:
 
 Add `--trace` for every selected action, screen, phase and scan-advance count. The script uses the real communication model and its enabled `inputView()` targets. Every request and response must pass the real server request validator, candidate validator and deterministic clarification path unchanged. It asserts exact keyboard entry, no authorization before final Speak, preservation of the keywords when a response arrives, and identical full authorized text in both conditions. It neither opens hardware nor calls Gemini/TTS nor plays audio. It emits JSON to stdout and does not write files.
 
-Measured model SHA-256: `bb4c9c15f50fab8da07eb739a388654e563d1d36c7d6c2e36365b56a754a6138`. This is a working-tree measurement; the script prints the current hash so changes can be detected and rerun.
+Measured model SHA-256: `0efc072e9dbb6d98bec92e389ee33374f130ce63c3a6a520576d33ac6e1fd042`. This includes the bounded keyboard overview ordering: five alphabet groups plus Expand, with Editing in navigation. The script prints the current hash so changes can be detected and rerun.
 
 Measured server validator SHA-256: `56e738ab18da8fcfea3c2b65c4cce934ef06917ec885121b01cff879b22c5bb5`. The script prints this hash as well. Fixtures include authored “please” and explicit personal pronouns wherever the validator requires them; these extra keyword-entry actions are included, not assumed away.
 
@@ -44,13 +44,13 @@ For the last task, the first response asks **Which happens daily?** The route de
 
 | Task | Full-spelling selections | Assisted selections | Full-spelling scan advances | Assisted scan advances | Clarification selections | Expansion responses |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Comfort | 49 | 42 | 161 | 151 | 0 | 1 |
-| Longer care statement | 83 | 45 | 221 | 114 | 0 | 1 |
-| Clarification request | 69 | 55 | 211 | 167 | 0 | 1 |
-| Education/work | 84 | 72 | 253 | 223 | 0 | 1 |
-| Negation | 69 | 49 | 212 | 155 | 0 | 1 |
-| Ambiguous cues | 83 | 44 | 199 | 87 | 1 | 2 |
-| **Total** | **437** | **307** | **1,257** | **897** | **1** | **7** |
+| Comfort | 49 | 42 | 161 | 150 | 0 | 1 |
+| Longer care statement | 83 | 45 | 221 | 113 | 0 | 1 |
+| Clarification request | 69 | 55 | 211 | 166 | 0 | 1 |
+| Education/work | 84 | 72 | 253 | 222 | 0 | 1 |
+| Negation | 69 | 49 | 212 | 154 | 0 | 1 |
+| Ambiguous cues | 83 | 44 | 199 | 86 | 1 | 2 |
+| **Total** | **437** | **307** | **1,257** | **891** | **1** | **7** |
 
 The assisted composition portions require 39, 42, 52, 69, 46 and 40 selections respectively. Each also includes one deliberate Expand, one Review-this-wording acceptance and one fresh Speak; the last includes the additional clarification. Full spelling includes all actual capital/punctuation and exit/review actions. No whole scanning-loop count or elapsed time is inferred from these target advances. The seven responses comprise five scripted Gemini-style fixtures and two actual local deterministic-template responses; no network request is made.
 
@@ -69,7 +69,7 @@ The main table has no context-setup cost because both conditions use General. Fr
 
 If the same context is retained for `N` messages, its selection cost can be allocated as `2/N` per message for analytical accounting. This is not a measured behavior or timing benefit. Context remains optional and is not a source of personal facts.
 
-The script also executes a separate rejection sensitivity case: comfort keywords receive “please reposition me.” This preserves meaning and passes the validator, but its capitalization differs from the specified exact target. The route deliberately chooses Try another before acceptance. Receiving and approving the correctly capitalized second fixture takes **43 selections and 154 advances**, versus 42 and 151 with the first accepted candidate: **one extra selection, three extra advances and one extra simulated request**. Reading and provider delay remain additional unknown costs. This is a deliberately constructed stylistic rejection, not an observed Gemini error rate. Added urgency such as “now” would be rejected by the server rather than presented as a candidate.
+The script also executes a separate rejection sensitivity case: comfort keywords receive “please reposition me.” This preserves meaning and passes the validator, but its capitalization differs from the specified exact target. The route deliberately chooses Try another before acceptance. Receiving and approving the correctly capitalized second fixture takes **43 selections and 153 advances**, versus 42 and 150 with the first accepted candidate: **one extra selection, three extra advances and one extra simulated request**. Reading and provider delay remain additional unknown costs. This is a deliberately constructed stylistic rejection, not an observed Gemini error rate. Added urgency such as “now” would be rejected by the server rather than presented as a candidate.
 
 Main fixture routes have zero spelling corrections and zero rejected candidates; one clarification is counted separately. All exact-text and no-premature-authorization assertions passed. Meaning-error rate, unintended audible speech, actual completion time, final-approval-to-audio time and provider latency are **unmeasured**. The fixtures are constructed to have the specified outcomes, so their success cannot estimate model reliability or how often real users would reject wording.
 

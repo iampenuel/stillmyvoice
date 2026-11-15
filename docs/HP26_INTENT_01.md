@@ -39,7 +39,7 @@ Developer/browser observations:
 - Context is visibly two-by-two at 1440×756 and 1024×672, with stable document height and aligned panels. Candidate overflow stays inside the right panel. At 390×844, the context becomes one column with necessary document scrolling and no horizontal overflow. Actual Chrome 200% zoom was observed; effective viewport 720×378, document width 712 and scroll width 712. All context actions remained within that width. Zoom and viewport overrides were restored.
 - Private visual evidence: `local-reports/INTENT_CONTEXT.jpg`, `INTENT_EXPANSION.jpg`, `INTENT_SILENT_REVIEW.jpg`, `INTENT_LASEAN.jpg`, `INTENT_CLARIFICATION.jpg`, `INTENT_CLARIFIED_CANDIDATE.jpg`, and context compact/narrow/200%-zoom images. These are fictional developer checks, not physical-switch observations.
 
-[Matched efficiency comparison](INTENT_EFFICIENCY.md): six identical target meanings take **437→307 modeled selections** and **1,257→897 ideal scan advances**. Fixtures now pass the actual server validator before traversal. This is not an observed speed gain; provider/reading/recognition/setup delays and missed scans remain unmeasured. Quick phrases can beat either spelling route. Existing direct Space/Backspace, fixed letter groups and word correction are retained; no speculative keyboard reordering was introduced.
+[Matched efficiency comparison](INTENT_EFFICIENCY.md): six identical target meanings take **437→307 modeled selections** and **1,257→891 ideal scan advances**. Fixtures now pass the actual server validator before traversal. This is not an observed speed gain; provider/reading/recognition/setup delays and missed scans remain unmeasured. Quick phrases can beat either spelling route. Existing direct Space/Backspace, fixed letter groups and word correction are retained; no speculative keyboard reordering was introduced.
 
 ## Physical repeat and release decision
 
@@ -55,3 +55,5 @@ With the original SMV tab focused, switch released, debugging banner canceled, C
 GO for a controlled fictional local demonstration of the already accepted deterministic route. New intent/LaSean physical acceptance is pending; NO-GO for claiming all voices, all interruption cases, clinical benefit or faster physical communication. Public source remains 9983260 until newer publication is approved. Domain deployment, production security and Devpost submission are separate release actions. Optional gaze/Scribe remain deferred.
 
 SpeakFaster is established related work, credited in the efficiency report. This prototype does not claim invention of abbreviated AAC expansion, clinical readiness or demonstrated speed gains.
+
+Keyboard follow-up: 122 tests, typecheck, production build and final source/bundle credential scan passed. The compact overview and letter-group return were browser-verified without panel or page overflow at 1024×672; see [keyboard evaluation](KEYBOARD_EVALUATION.md). No hardware/input changes.

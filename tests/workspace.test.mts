@@ -42,6 +42,20 @@ test('registered scan targets follow rendered content/navigation order, with dis
     assert.deepEqual(inputView(s).targets, [...sections.primary, ...sections.navigation].filter(x => !x.disabled).map(x => x.id));
   }
 });
+test('normal keyboard overview has five stable groups plus Expand and a compact navigation set', () => {
+  let s = initialModel('overview'); s.draft = 'fictional keywords'; s.cloud.consent = true; s.cloud.gemini = true;
+  s = step(s, 'spell');
+  const groups = ['row:abcde', 'row:fghij', 'row:klmno', 'row:pqrst', 'row:uvwxyz'];
+  assert.deepEqual(choiceSections(s).primary.map(x => x.id), [...groups, 'expand']);
+  assert.deepEqual(choiceSections(s).navigation.map(x => x.id), ['row:editing', 'done', 'char: ', 'erase']);
+  s = step(step(s, 'row:fghij'), 'char:h');
+  assert.equal(s.screen.value, 'rows'); assert.equal(inputView(s).targets[0], 'row:fghij');
+  assert.deepEqual(choiceSections(s).primary.map(x => x.id), [...groups, 'expand']);
+  s = step(s, 'row:editing');
+  assert.ok(choiceSections(s).primary.some(x => x.id === 'row:numbers'));
+  assert.ok(choiceSections(s).navigation.some(x => x.id === 'back'));
+  assert.equal(s.authorization, null);
+});
 test('panel reveal moves only the minimum required offset and leaves visible targets stationary', () => {
   assert.equal(revealDelta(30, 70, 0, 100), 0);
   assert.equal(revealDelta(-10, 30, 0, 100), -10);

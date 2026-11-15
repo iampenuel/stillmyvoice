@@ -25,7 +25,7 @@ Do not run another serial monitor. Keep the SMV tab focused and the arcade butto
 
 1. With the switch only: More controls → Settings → Voice → ElevenLabs voices → Cecily. The compact detail must show Preview voice first, Use this voice, and Back to voices. Opening it stays silent. Preview deliberately; hear only the fixed sample. Stop preview cancels it and returns to the detail. Use this voice explicitly confirms the choice and returns to the message.
 2. Phrases → “Please reposition me.” (in Quick phrases) → Review message. Review stays silent. A new cycle on Speak exactly this must produce that exact phrase once.
-3. Repeat with Eric or another available approved voice. Hear the change; deliberately stop one playback. LaSean details are inspectable, but Preview and Use remain disabled for its unavailable preferred model.
+3. Repeat with Eric or another available approved voice. Hear the change; deliberately stop one playback. LaSean now uses verified Flash v2; its audible/physical repeat remains pending.
 4. Get suggestions → Suggest a reply → a fictional question. Waiting/results must neither change the draft nor speak. Choose one, inspect the editable draft, review silently, then authorize it with a fresh cycle.
 5. Check spelling/negation with fictional wording, and explicitly reject or Undo an unwanted suggestion. Verify manual spelling remains available.
 6. Controlled cloud-failure test requires coordination with engineering; preserve draft, select system fallback, then separately approve it. No automatic fallback.

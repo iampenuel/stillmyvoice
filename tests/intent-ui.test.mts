@@ -19,6 +19,9 @@ test('changing voice candidates clears stale preview status without altering aut
   m = step(step(m, 'back-to-voices'), 'premium:4');
   assert.equal(m.speechPreview, false); assert.equal(m.speech, 'Not spoken'); assert.equal(m.authorization, null);
   assert.equal(m.draft, 'belly hurts weak today'); assert.equal(m.lastPlayed, 'Please stop.');
+  let empty = fixture(''); empty.lastPlayed = '';
+  empty = step(step(step(step(step(empty, 'more'), 'settings'), 'voices'), 'premium-voices'), 'premium:0');
+  assert.equal(empty.speech, 'Not spoken'); assert.equal(empty.authorization, null);
 });
 
 test('context is optional, four grid choices plus General, persistent and silent', () => {

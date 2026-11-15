@@ -22,16 +22,16 @@ The API enforces local Host/Origin checks, JSON and body limits, bounded timeout
 
 Exact IDs and names are maintained in `src/communication/cloud-contract.mts`. Discovery paginates the account voice API and rejects identity ambiguity, unsupported model tuning, withdrawal and custom usage rates. No library entries or key permissions were changed.
 
-| Owner voice | Verified voice ID | Flash v2.5 status at checkpoint |
+| Owner voice | Verified voice ID | Assigned-model evidence |
 |---|---|---|
 | Cecily — Clear and Warm | `Uc7anshoV8mdBhDnEZEX` | Metadata verified; live browser preview and phrase playback completed |
 | Zoë — Casual millennial woman | `m1Edok6RLyT2Hz3OljNi` | Metadata verified; audition pending |
 | Gramma Sherry — Narration | `mdpRX5ndZ28fmYwb5P0J` | Metadata verified; audition pending |
 | James — Gen Z Comforting Southern Man | `mhJNZGgdePh7HbwWYwN2` | Metadata verified; audition pending |
-| LaSean Pickens | `bQxW1c7YCr6VQgQhw8KX` | Unavailable: API reports failed Flash v2.5 tuning |
+| LaSean Pickens | `bQxW1c7YCr6VQgQhw8KX` | Flash v2.5 tuning failed; assigned Flash v2 verified by metadata, live synthesis and browser preview |
 | Eric — Smooth, Trustworthy | `cjVigY5qzO86Huf0OWal` | Metadata verified; audition pending |
 
-No voice substitution or alternative-model selection occurred. Metadata compatibility does not establish audible pronunciation. LaSean remains inspectable with Preview and Use disabled pending a reviewed compatible-model decision.
+No voice substitution occurred. LaSean alone uses the authorized Flash v2 model exception; all other voices retain Flash v2.5. Metadata and playback events do not establish audible pronunciation. Preview and Use become available only after fresh metadata verification.
 
 Opening voice details is silent and does not change the saved voice. Preview is the first scanned action; Use this voice separately confirms the choice. Preview deliberately authorizes only “This is the selected voice.” Message speech captures the exact reviewed text, revision, voice, rate and unique one-use authorization. The provider receives the exact text with normalization off. Audio is bounded and collected before playback. Stop/focus loss/edit/cancellation invalidates the authorization, aborts work and releases playback resources; late audio cannot start. Failed premium speech offers system voice, returns to silent review and requires another approval. No automatic retry, queue or fallback.
 
