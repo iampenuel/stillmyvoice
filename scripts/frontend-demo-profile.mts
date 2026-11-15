@@ -28,7 +28,10 @@ function provenance(): ReleaseProvenance {
   let gitRevision: string | undefined, dirty: boolean | null = null;
   try {
     gitRevision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0;
+    const status = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    dirty = status.length > 0;
+    // Paths only; never print file contents, environment values or credentials.
+    if (process.env.VERCEL === '1' && dirty) console.error('SMV build changed paths: ' + JSON.stringify(status.split('\n').slice(0, 20)));
   } catch { /* Git metadata can be absent in an immutable Vercel Git build. */ }
   // This single public SHA can be supplied without exposing Vercel's broader system variables.
   // It must be updated to the exact approved gitSource SHA for each manual release.
