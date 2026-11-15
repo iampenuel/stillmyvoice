@@ -222,6 +222,8 @@ export function App() {
     ? model.review.pages[model.screen.page ?? 0] : model.draft;
   const sections = choiceSections(model);
   const alphabet = model.alphabetMode === 'visible' && model.screen.name === 'keyboard' && (model.screen.value === 'rows' || alphabetRows.some(row => row === model.screen.value));
+  const compactAlphabet = alphabet && !model.repair && !model.expansion.editing;
+  const extraPrimary = sections.primary.filter(option => !alphabet || !(option.id.startsWith('char:') || alphabetRows.some(row => option.id === `row:${row}`)));
   const voiceCandidate = candidateVoice(model);
   const playbackStatus = model.speechPreview ? ({ Preparing: 'Preparing voice preview', Speaking: 'Playing voice preview',
     Stopped: 'Voice preview stopped', 'Playback finished': 'Voice preview finished', 'Speech failed': 'Voice preview failed' } as Record<string, string>)[model.speech] ?? model.speech : model.speech;
@@ -232,8 +234,13 @@ export function App() {
   };
   const renderChoice = (option: Choice) => {
     const selected = !!((scanning || held) && target === option.id && input?.view?.revision === model.uiRevision);
-    const shown = option.id === 'resume' && !(scanning || held)
+    let shown = option.id === 'resume' && !(scanning || held)
       ? { ...option, label: 'Return to message', detail: 'Companion control. This does not reconnect the switch.' } : option;
+    if (compactAlphabet) {
+      const label = option.id === 'row:editing' ? 'Editing' : option.id === 'erase' ? 'Delete'
+        : option.id === 'keyboard-layout' ? 'Grouped keyboard' : option.label;
+      shown = { ...shown, label, detail: option.id === 'erase' ? 'Last character' : undefined };
+    }
     return <ChoiceButton key={option.id} option={shown} selected={selected} held={held}
       register={element => { if (element) buttons.current.set(option.id, element); else buttons.current.delete(option.id); }}
       activate={() => companion(option.id)} />;
@@ -281,11 +288,11 @@ export function App() {
             : model.lastPlayed !== null && model.speech !== 'Playback finished' ? <p className="small">Previously played. New approval is required to speak again.</p> : null}
         </div>
       </section>
-      <section className="interaction-panel" aria-labelledby="interaction-title">
+      <section className="interaction-panel" data-alphabet={compactAlphabet} aria-labelledby="interaction-title">
         <div className="panel-heading"><h2 id="interaction-title" aria-live="polite">{model.screen.name === 'paused' ? 'Communication paused' : title(model)}</h2>
-          <span className="panel-caption">{voiceCandidate ? voiceCandidate.description : model.screen.name === 'review' ? 'Your approval, your words.' : model.screen.name === 'speaking' ? 'Stop speaking cancels playback.' : 'One press and release to choose.'}</span>
+          <span className="panel-caption">{alphabet ? held ? 'Release to choose.' : model.screen.value === 'rows' ? 'Choose a row, then a letter.' : 'Choose a letter. Other rows stay visible.' : voiceCandidate ? voiceCandidate.description : model.screen.name === 'review' ? 'Your approval, your words.' : model.screen.name === 'speaking' ? 'Stop speaking cancels playback.' : 'One press and release to choose.'}</span>
         </div>
-        <div ref={choiceRegion} className="interaction-scroll" data-keyboard-overview={model.screen.name === 'keyboard' && (model.screen.value ?? 'rows') === 'rows' && !model.repair && !model.expansion.editing} data-keyboard-letters={model.screen.name === 'keyboard' && !model.repair && !model.expansion.editing && /^(abcde|fghij|klmno|pqrst|uvwxyz)$/.test(model.screen.value ?? '')} tabIndex={0} aria-label="Communication choices">
+        <div ref={choiceRegion} className="interaction-scroll" data-alphabet={compactAlphabet} data-keyboard-overview={model.screen.name === 'keyboard' && (model.screen.value ?? 'rows') === 'rows' && !model.repair && !model.expansion.editing} data-keyboard-letters={model.screen.name === 'keyboard' && !model.repair && !model.expansion.editing && /^(abcde|fghij|klmno|pqrst|uvwxyz)$/.test(model.screen.value ?? '')} tabIndex={0} aria-label="Communication choices">
           {model.screen.name === 'paused' && !(scanning || held) ? <div className="recovery-row" role="status"><p>{recovery.guidance}</p>
             {recovery.setup ? <button type="button" className="compact-control" onClick={openSetup}>Companion setup</button> : null}</div>
             : model.notice && model.screen.name !== 'paused' ? <p className="notice" role="status">{model.notice}</p> : null}
@@ -301,19 +308,17 @@ export function App() {
               const rowStage = model.screen.value === 'rows', activeRow = model.screen.value === row;
               const id = `row:${row}`, selected = !!((scanning || held) && target === id && input?.view?.revision === model.uiRevision);
               return <div className="alphabet-row" key={row}>
-                {rowStage ? <div className="target-envelope" data-scan={selected} data-held={selected && held} data-choice={id}><button type="button" aria-label={`Row ${row.toUpperCase().split('').join(' ')}`} ref={element => { if (element) buttons.current.set(id, element); else buttons.current.delete(id); }} onClick={() => companion(id)}><span className="alphabet-cells">{Array.from(row).map(char => <span key={char}>{char.toUpperCase()}</span>)}</span></button></div>
+                {rowStage ? <div className="target-envelope" data-scan={selected} data-held={selected && held} data-choice={id}><button className="alphabet-row-control" type="button" aria-label={`Row ${row.toUpperCase().split('').join(' ')}`} ref={element => { if (element) buttons.current.set(id, element); else buttons.current.delete(id); }} onClick={() => companion(id)}><span className="alphabet-cells">{Array.from(row).map(char => <span className="alphabet-key" key={char}>{char.toUpperCase()}</span>)}</span></button></div>
                 : <div className="alphabet-cells">{Array.from(row).map(char => {
                   const letterId = `char:${char}`, letterSelected = !!((scanning || held) && target === letterId && input?.view?.revision === model.uiRevision);
-                  return activeRow ? <div key={char} className="target-envelope" data-scan={letterSelected} data-held={letterSelected && held} data-choice={letterId}><button type="button" aria-label={char.toUpperCase()} ref={element => { if (element) buttons.current.set(letterId, element); else buttons.current.delete(letterId); }} onClick={() => companion(letterId)}>{char.toUpperCase()}</button></div> : <span className="alphabet-inactive" key={char}>{char.toUpperCase()}</span>;
+                  return activeRow ? <div key={char} className="target-envelope" data-scan={letterSelected} data-held={letterSelected && held} data-choice={letterId}><button className="alphabet-key" type="button" aria-label={char.toUpperCase()} ref={element => { if (element) buttons.current.set(letterId, element); else buttons.current.delete(letterId); }} onClick={() => companion(letterId)}>{char.toUpperCase()}</button></div> : <span className="alphabet-key alphabet-inactive" key={char}>{char.toUpperCase()}</span>;
                 })}</div>}
               </div>;
             })}
-            <p className="scan-label" aria-hidden="true">{held ? 'Release to choose' : model.screen.value === 'rows' ? 'Choose a row, then a letter' : 'Choose a letter · Other rows remain visible'}</p>
           </div> : null}
-          <div className="choices" data-grid={model.screen.name === 'phrases' || model.screen.name === 'keyboard' || model.screen.name === 'repair' || model.screen.name === 'context'}>
-            {sections.primary.filter(option => !alphabet || !(option.id.startsWith('char:') || alphabetRows.some(row => option.id === `row:${row}`))).map(renderChoice)}
-          </div>
-          {sections.navigation.length ? <div className="navigation-choices">{sections.navigation.map(renderChoice)}</div> : null}
+          {compactAlphabet ? <div className="alphabet-controls" aria-label="Spelling actions">{[...extraPrimary, ...sections.navigation].map(renderChoice)}</div>
+            : <><div className="choices" data-grid={model.screen.name === 'phrases' || model.screen.name === 'keyboard' || model.screen.name === 'repair' || model.screen.name === 'context'}>{extraPrimary.map(renderChoice)}</div>
+              {sections.navigation.length ? <div className="navigation-choices">{sections.navigation.map(renderChoice)}</div> : null}</>}
         </div>
       </section>
     </div>

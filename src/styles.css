@@ -111,10 +111,45 @@ main[data-large-text="true"] .navigation-choices { grid-template-columns: minmax
   .target-envelope[data-held="true"] button { outline-style: double; }
 }
 
-.alphabet-surface { display: grid; gap: 8px; flex: 0 0 auto; }
-.alphabet-cells { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); width: 100%; gap: 6px; align-items: center; text-align: center; }
-.alphabet-row .target-envelope button { min-height: 46px; padding: 4px; justify-content: center; align-items: center; font-size: calc(21px * var(--text-scale,1)); }
-.alphabet-row > .target-envelope > button { padding-inline: 4px; }
-.alphabet-inactive { display: grid; align-items: center; min-height: 46px; font-size: calc(21px * var(--text-scale,1)); color: #56616c; }
-main:not([data-large-text="true"]) [data-keyboard-overview="true"] .alphabet-row .target-envelope button { min-height: 46px; padding: 4px; }
-@media (max-width: 40rem) { .alphabet-cells { gap: 4px; } .alphabet-row .target-envelope button { min-height: 48px; } }
+.alphabet-surface { display: grid; gap: 4px; flex: 0 0 auto; }
+.alphabet-cells { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); width: 100%; gap: 6px; align-items: stretch; text-align: center; }
+.alphabet-key, .alphabet-row .target-envelope button.alphabet-key {
+  display: grid; place-items: center; min-height: 44px; padding: 4px;
+  border: 1px solid #9ba6b1; border-radius: 6px; background: #fff; color: #1b232b;
+  font-size: calc(23px * var(--text-scale,1)); font-weight: 500; line-height: 1.2;
+}
+.alphabet-row .target-envelope button.alphabet-row-control { min-height: 44px; padding: 0; border: 0; border-radius: 6px; background: transparent; }
+.alphabet-row > .target-envelope[data-scan="true"] .alphabet-key { background: #edf3ff; border-color: var(--accent); }
+.alphabet-row > .target-envelope[data-held="true"] .alphabet-key { background: #dce8ff; border-color: #153b83; }
+.alphabet-row .target-envelope[data-scan="true"] button.alphabet-key { background: #edf3ff; border-color: var(--accent); }
+.alphabet-row .target-envelope[data-held="true"] button.alphabet-key { background: #dce8ff; border-color: #153b83; }
+.alphabet-row .target-envelope[data-scan="true"] button { outline-offset: 0; }
+.alphabet-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; margin-top: auto; border-top: 1px solid #dce1e6; padding-top: 8px; }
+.alphabet-controls > :only-child { grid-column: 1 / -1; }
+.alphabet-controls .target-envelope button { min-height: 48px; padding: 4px 8px; gap: 2px; justify-content: center; }
+.alphabet-controls .choice-label { font-size: calc(16px * var(--text-scale,1)); line-height: 1.2; }
+.alphabet-controls .choice-detail { font-size: calc(13px * var(--text-scale,1)); line-height: 1.2; }
+.alphabet-controls .scan-label { display: none; }
+@media (min-width: 64rem) and (min-height: 42rem) {
+  main:not([data-large-text="true"]) .interaction-panel[data-alphabet="true"] { padding: 16px; gap: 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-alphabet="true"] { gap: 8px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-alphabet="true"] .alphabet-row .target-envelope button { min-height: 44px; padding: 4px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-alphabet="true"] .alphabet-row .target-envelope button.alphabet-row-control { padding: 0; }
+  main:not([data-large-text="true"]) .alphabet-controls { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  main:not([data-large-text="true"]) .interaction-scroll[data-alphabet="true"] .alphabet-controls .target-envelope button { min-height: 48px; padding: 4px 8px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-alphabet="true"] .alphabet-controls .choice-label { font-size: 16px; }
+}
+@media (max-width: 40rem) {
+  .alphabet-cells { gap: 4px; }
+  .alphabet-key, .alphabet-row .target-envelope button.alphabet-key { min-height: 48px; }
+}
+@media (min-width: 64rem) and (min-height: 42rem) and (max-height: 44rem) {
+  main:not([data-large-text="true"]) .interaction-panel[data-alphabet="true"] { padding: 12px; }
+  main:not([data-large-text="true"]) .interaction-scroll[data-alphabet="true"] { gap: 6px; }
+  main:not([data-large-text="true"]) .alphabet-controls { padding-top: 4px; }
+  /* Keep Delete's full accessible name without forcing a third visual line. */
+  .alphabet-controls [data-choice="erase"] .choice-detail {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}

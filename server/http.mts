@@ -40,7 +40,7 @@ export function createApiHandler(eleven: Eleven, gemini: Gemini, scribe?: Return
     if (req.method !== 'POST') { send(res, 405, { error: 'METHOD_NOT_ALLOWED' }); return; }
     if (!origins.has(req.headers.origin ?? '') || req.headers['sec-fetch-site'] === 'cross-site') { send(res, 403, { error: 'SAME_ORIGIN_REQUIRED' }); return; }
     if (Date.now() - minute >= 60_000) { minute = Date.now(); requests = 0; }
-    if (++requests > 60) { send(res, 429, { error: 'LOCAL_RATE_LIMIT' }); return; }
+    if (++requests > 60) { send(res, 429, { error: 'LOCAL_RATE_LIMIT', source: 'app', retryAfterSeconds: Math.max(1, Math.ceil((60000 - (Date.now() - minute)) / 1000)) }); return; }
     const abort = new AbortController();
     const disconnected = () => { if (!res.writableEnded) abort.abort(); };
     res.once('close', disconnected); req.once('aborted', disconnected);
@@ -64,7 +64,7 @@ export function createApiHandler(eleven: Eleven, gemini: Gemini, scribe?: Return
         send(res, 200, { suggestions: await gemini.suggest(payload, signal) });
       } else send(res, 404, { error: 'NOT_FOUND' });
     } catch (error) {
-      send(res, error instanceof ProviderError ? error.status : 503, { error: error instanceof ProviderError ? error.code : 'REQUEST_CANCELLED_OR_UNAVAILABLE' });
+      send(res, error instanceof ProviderError ? error.status : 503, { error: error instanceof ProviderError ? error.code : 'REQUEST_CANCELLED_OR_UNAVAILABLE', ...(error instanceof ProviderError ? error.metadata : {}) });
     } finally { res.removeListener('close', disconnected); req.removeListener('aborted', disconnected); }
   };
 }

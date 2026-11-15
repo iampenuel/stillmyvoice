@@ -74,11 +74,11 @@ test('suggestion and expansion routes share one free-tier gate, quota and identi
   const p=createGemini(env,async payload=>{calls++;return 'suggestions' in payload.schema.properties?'{"suggestions":[]}':JSON.stringify(candidate('My belly hurts, and I feel weak today.'));});
   const signal=new AbortController().signal;
   await p.expand(request,signal);
-  await assert.rejects(p.suggest({id:'fictional-suggestion:2',text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_LIMIT/);
+  await assert.rejects(p.suggest({id:'fictional-suggestion:2',text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_COOLDOWN/);
   t.mock.timers.tick(5000);
   await assert.rejects(p.suggest({id:request.id,text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_ALREADY_REQUESTED/);
   for(let i=1;i<20;i++){await p.expand({...request,id:'fictional-expanded:'+i},signal);t.mock.timers.tick(5000);}
-  await assert.rejects(p.suggest({id:'fictional-final:21',text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_LIMIT/);
+  await assert.rejects(p.suggest({id:'fictional-final:21',text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_SESSION_LIMIT/);
   assert.equal(calls,20);assert.equal(p.status().requests,20);
   await assert.rejects(createGemini({...env,SMV_GEMINI_FREE_TIER_CONFIRMED:'false'},async()=>{throw Error();}).expand(request,signal),/GEMINI_DISABLED/);
 });
@@ -104,6 +104,6 @@ test('an in-flight expansion prevents simultaneous suggestion work even after sp
   t.mock.timers.enable({apis:['Date'],now:10000});let finish!:(value:string)=>void,calls=0;
   const p=createGemini(env,()=>{calls++;return new Promise(resolve=>{finish=resolve;});});
   const signal=new AbortController().signal;const first=p.expand(request,signal);t.mock.timers.tick(5000);
-  await assert.rejects(p.suggest({id:'concurrent-request:2',text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_LIMIT/);
+  await assert.rejects(p.suggest({id:'concurrent-request:2',text:'hello',context:'',kind:'wording_alternative',synthetic:true},signal),/ASSISTANCE_BUSY/);
   finish(JSON.stringify(candidate('My belly hurts, and I feel weak today.')));await first;assert.equal(calls,1);
 });

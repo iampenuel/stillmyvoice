@@ -18,3 +18,7 @@ test('client-prefixed provider keys are rejected without echoing their contents'
   assert.throws(() => serverEnvironment('VITE_GEMINI_API_KEY=synthetic-sensitive-fixture'),
     error => error instanceof Error && !error.message.includes('synthetic-sensitive-fixture'));
 });
+test('controlled restart budget comes only from explicit operator state, not the private key file', () => {
+  assert.equal(serverEnvironment('SMV_GEMINI_START_REQUESTS=0', { SMV_GEMINI_START_REQUESTS: '3' }).SMV_GEMINI_START_REQUESTS, '3');
+  assert.equal(serverEnvironment('SMV_GEMINI_START_REQUESTS=0').SMV_GEMINI_START_REQUESTS, undefined);
+});

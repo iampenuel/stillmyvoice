@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { cloudFailure, requestStillCurrent } from './cloud-error.mts';
 import { finishAssistance, finishExpansion, type Model } from './model.mts';
 import type { ExpansionResult } from './expansion-contract.mts';
 import { approvedVoices, type PremiumVoice, type Suggestion } from './cloud-contract.mts';
@@ -8,9 +9,11 @@ const active = () => document.hasFocus() && document.visibilityState === 'visibl
 async function json(path: string, signal: AbortSignal, body?: unknown) {
   const response = await fetch(path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin',
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal });
-  if (!response.ok) throw Error(response.status === 429 ? 'Quota reached. Continue with your own words.' : 'Service unavailable. Your words are kept.');
   const text = await response.text(); if (text.length > 65536) throw Error('Invalid service response.');
-  return JSON.parse(text);
+  let result: unknown;
+  try { result = JSON.parse(text); } catch { throw Error(response.ok ? 'Invalid service response.' : cloudFailure(response.status, null)); }
+  if (!response.ok) throw Error(cloudFailure(response.status, result));
+  return result as any;
 }
 /** Metadata never changes a held view. Suggestions have no input or speech capability. */
 export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
@@ -55,8 +58,7 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
     void (async () => {
       try {
         // Let parent lifecycle retirement run before starting retained work after HMR.
-        await Promise.resolve();
-        if (controller.signal.aborted || current.current.assistance.request?.id !== request.id) return;
+        if (!await requestStillCurrent(controller.signal, request.id, () => current.current.assistance.request?.id)) return;
         if (!active() || !current.current.cloud.consent || !current.current.cloud.gemini) throw Error('Request canceled. Your words are kept.');
         const response = await json('/api/suggestions', AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), request);
         const items: unknown = response.suggestions;
@@ -83,8 +85,7 @@ export function CloudRuntime({ model, current, commit, canUpdate }: Props) {
     void (async () => {
       try {
         // Retained request state cannot be replayed before parent HMR cleanup retires it.
-        await Promise.resolve();
-        if (controller.signal.aborted || current.current.expansion.request?.id !== expansionRequest.id) return;
+        if (!await requestStillCurrent(controller.signal, expansionRequest.id, () => current.current.expansion.request?.id)) return;
         if (!active() || !current.current.cloud.consent || !current.current.cloud.gemini) throw Error('Request canceled. Your words are kept.');
         const result = await json('/api/expansion', AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), expansionRequest);
         if (!result || Object.keys(result).sort().join(',') !== 'candidate,clarificationChoices,clarificationQuestion,status,unresolvedCues'

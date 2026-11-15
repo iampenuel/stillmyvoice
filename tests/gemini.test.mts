@@ -73,7 +73,7 @@ test('the verified free-tier budget enforces five seconds between requests', asy
   const p = createGemini(env, async () => { calls++; return '{"suggestions":[]}'; });
   await p.suggest(request, new AbortController().signal);
   t.mock.timers.tick(4999);
-  await assert.rejects(p.suggest({ ...request, id: 'synthetic-request:2' }, new AbortController().signal), /ASSISTANCE_LIMIT/);
+  await assert.rejects(p.suggest({ ...request, id: 'synthetic-request:2' }, new AbortController().signal), /ASSISTANCE_COOLDOWN/);
   t.mock.timers.tick(1);
   await p.suggest({ ...request, id: 'synthetic-request:2' }, new AbortController().signal);
   assert.equal(calls, 2);

@@ -2,6 +2,16 @@
 
 November 14, 2026. Additive checkpoint after 18b92a6. The owner replied **“it all worked well”** to the complete LaSean preview, explicit voice choice, switch spelling, intent expansion, silent review and separate Speak script. Record this as owner-reported success for that exercised flow; the owner did not separately transcribe the heard words or supply timings. It does not validate the new keyboard or microphone flow below.
 
+## Latest focused correction
+
+The owner’s reply to the c1da080 physical script corrected the Google subscription and requested clearer keyboard/quota behavior; it did not confirm microphone or combined acceptance. Public c1da080 publication was explicitly approved and completed. Follow-up source remains local until separately approved for publication.
+
+All letters now appear as stable individual outlined keys while preserving five row targets and a second fresh letter cycle. The compact footer keeps Space, Delete, Editing, Expand, Review and exits in the existing model order. At 1024×672 the right choices region ends at y591, its scroll/client heights both equal 367, and all footer controls end at y583. At 1440×756 both panels remain aligned. At 390×844 and actual Chrome 200% zoom (720×378 CSS viewport), necessary vertical reflow remains available without horizontal overflow. The small desktop correction hides only Delete’s redundant visual detail; its accessible name still includes “Last character.”
+
+Browser companion actions spelled `not ready`, one deliberate expansion returned `I am not ready.`, and explicit candidate review showed Awaiting approval. The draft stayed unchanged before selection, with no speech authorization. One API attempt produced one provider call and no duplicates. This is browser/provider evidence, not physical acceptance. [Quota evidence](QUOTA_DIAGNOSTICS.md). Current verification: 148 passing tests, typecheck and production build passed; 98 source/bundle files scanned with zero credential matches.
+
+New private visual evidence: `local-reports/keyboard-final-1440.jpg`, `keyboard-final-1024.jpg`, `keyboard-final-narrow.jpg`, `keyboard-final-zoom200-actions.jpg`, `quota-browser-review.jpg`, and `listening-final-consent.jpg`. Images were inspected. Scan target IDs/order and input/firmware were unchanged, so existing modeled selection/scan counts remain applicable; no speed or cognitive benefit is claimed.
+
 ## Implemented
 
 The experimental default displays all 26 letters in five stable alphabetical rows, retaining the accepted row membership. One fresh cycle chooses a row; another chooses its letter. Other rows stay visible. Completed letters return predictably to row scanning. The previous grouped display remains selectable as a reversible fallback. Space, Backspace, Editing, Expand, Review, Done and Back remain switch targets. No input reducer, firmware, protocol, timing contract or speech-approval changes.
@@ -28,7 +38,7 @@ Official [transcription documentation](https://elevenlabs.io/docs/overview/capab
 
 Keep SMV focused and the switch released. Cancel the debugging banner if present. Companion setup → fictional cloud consent → Refresh cloud status → Connect verified Pico CDC2; use a new Resume cycle if offered. Keep the existing fictional draft until deliberately starting another.
 
-1. Spell: select a visible row, then a letter with another fresh cycle. Verify all other letters stay visible, only one character appears, and a hold never repeats. Backspace that test character to restore the draft.
+1. Spell: select a visible row, then a letter with another fresh cycle. Verify all other letters stay visible, only one character appears, and a hold never repeats. Use Delete to remove that test character to restore the draft.
 2. More controls → Listen → obtain the speaker's agreement → Continue → Start recording. Grant microphone permission with companion assistance if needed. If permission causes safe cancellation, return and start again. Say only the fictional question `How are you feeling today?` and select Stop recording. Verify capture stops.
 3. Inspect the transcript. Reject errors; accept correct text as context. The composed message must remain unchanged and silent.
 4. Deliberately compose the fictional keywords `not ready` (or retain the prior accepted wording), choose Expand, inspect and accept the candidate into Review. Only a separate new Speak cycle may speak it once. Report actual wording and any failure.
@@ -36,4 +46,4 @@ Keep SMV focused and the switch released. Cancel the debugging banner if present
 
 ## Release boundary
 
-Prior accepted AAC/LaSean/intent route is the reliable demonstration baseline. New visible alphabet/Listening is experimental pending the physical script. Gaze is deferred. Public GitHub remains 9983260 pending newer publication approval; no deployment, DNS change or Devpost submission occurred. This checkpoint adds no dependencies, exposes no keys, and makes no clinical or compliance claim.
+Prior accepted AAC/LaSean/intent route is the reliable demonstration baseline. New visible alphabet/Listening is experimental pending the physical script. Gaze is deferred. Public GitHub now contains approved c1da080; the subsequent focused correction remains local pending publication approval; no deployment, DNS change or Devpost submission occurred. This checkpoint adds no dependencies, exposes no keys, and makes no clinical or compliance claim.
