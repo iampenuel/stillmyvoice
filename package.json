@@ -21,8 +21,9 @@
     "preview:demo": "VITE_SMV_RELEASE_MODE=frontend-demo vite preview --mode frontend-demo --host 127.0.0.1 --port 4173 --strictPort",
     "build:gaze-demo": "npm run prepare:gaze && tsc --noEmit && VITE_SMV_RELEASE_MODE=gaze-demo vite build --mode gaze-demo",
     "preview:gaze-demo": "VITE_SMV_RELEASE_MODE=gaze-demo vite preview --mode gaze-demo --host 127.0.0.1 --port 4174 --strictPort",
-    "build:public-demo": "npm run prepare:gaze && tsc --noEmit && VITE_SMV_RELEASE_MODE=public-demo vite build --mode public-demo",
-    "preview:public-demo": "VITE_SMV_RELEASE_MODE=public-demo vite preview --mode public-demo --host 127.0.0.1 --port 4175 --strictPort"
+    "build:public-demo": "npm run prepare:gaze && npm run build:api && tsc --noEmit && VITE_SMV_RELEASE_MODE=public-demo vite build --mode public-demo",
+    "preview:public-demo": "VITE_SMV_RELEASE_MODE=public-demo vite preview --mode public-demo --host 127.0.0.1 --port 4175 --strictPort",
+    "build:api": "tsc -p tsconfig.api.json"
   },
   "dependencies": {
     "@google/genai": "3.3.0",

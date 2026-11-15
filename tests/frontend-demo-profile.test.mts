@@ -43,7 +43,7 @@ test('Vercel public demo permits only same-origin APIs and gaze with explicit ca
   assert.equal(config.framework, 'vite'); assert.equal(config.outputDirectory, 'dist');
   assert.equal(config.buildCommand, 'npm run build:public-demo'); assert.equal(config.installCommand, 'npm ci');
   assert.equal(config.git.deploymentEnabled, false);
-  assert.deepEqual(config.rewrites, [{ source: '/gaze-experiment', destination: '/gaze-experiment/index.html' }]); assert.deepEqual(config.functions, { 'api/[...route].ts': { maxDuration: 30 } });
+  assert.deepEqual(config.rewrites, [{ source: '/gaze-experiment', destination: '/gaze-experiment/index.html' }]); assert.deepEqual(config.functions, { 'api/[...route].js': { maxDuration: 30 } });
   assert.deepEqual(Object.fromEntries(config.headers[0].headers.map((entry: { key: string; value: string }) => [entry.key, entry.value])), publicDemoHeaders);
   assert.match(gazeDemoHeaders['Content-Security-Policy'], /(?:^|; )connect-src 'self';/);
   assert.match(gazeDemoHeaders['Content-Security-Policy'], /(?:^|; )worker-src 'self';/);

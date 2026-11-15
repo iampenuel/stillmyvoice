@@ -62,7 +62,7 @@ One provider request and one request per session may be in flight. The request a
 
 ## API and browser boundaries
 
-The Vercel entry `api/[...route].ts` invokes the server-only public handler. It accepts only the two production HTTPS origins, requires matching Origin on mutations, returns no permissive CORS header and rejects query parameters on API requests. Routes are:
+The Vercel entry `api/[...route].js` invokes the server-only public handler. It accepts only the two production HTTPS origins, requires matching Origin on mutations, returns no permissive CORS header and rejects query parameters on API requests. Routes are:
 
 - `GET/POST/DELETE /api/demo-access`: inspect, authorize or revoke Demo access.
 - `GET /api/status`: locked status or authenticated shared budget/provider configuration.
@@ -99,3 +99,5 @@ Before publication, run all tests, typecheck, production build, dependency/crede
 After deploying the exact reviewed commit, verify READY plus anonymous HTTPS, matching source metadata, license/model/WASM responses and security headers. Verify denied cloud access, code authentication, server-side logout, one actual fictional Gemini result, one separately authorized ElevenLabs response and one consented Scribe transcription. Distinguish generated audio bytes from owner-confirmed audibility. Check real camera activation/cleanup, switch-only recovery and silent Review/separate speech authorization. Record actual results and failures; do not substitute mocks for provider or physical acceptance.
 
 Chrome camera/Web Serial permissions belong to each origin, so localhost permission or earlier hardware acceptance is not a public-origin pass. Devpost remains a separate owner-controlled submission step; source publication and deployment do not submit the entry. Protect the November 15, 8:00 AM Eastern cutoff and stop unrelated development.
+
+The public build explicitly compiles the server dependency graph with `tsconfig.api.json` into ignored `.api-build/` output. The JavaScript Vercel entry imports the emitted ESM handler; this avoids missing `.mjs` dependencies from automatic TypeScript entry conversion. The emitted handler is smoke-tested separately from source tests.

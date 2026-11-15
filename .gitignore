@@ -31,3 +31,6 @@ playwright-report/
 
 # Future local Vercel project metadata and pulled environments stay private.
 /.vercel/
+
+# Reproducibly compiled server-only function dependencies.
+/.api-build/
